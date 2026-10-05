@@ -1,0 +1,138 @@
+{
+  "name": "cadence",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Split YouTube jukeboxes, movie albums and singer collections into separate, tagged songs",
+  "license": "MIT",
+  "author": {
+    "name": "Urgen Dorjee",
+    "email": ""
+  },
+  "copyright": "Copyright (c) 2026 Urgen Dorjee",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build:frontend": "vite build && node scripts/check-preload.cjs",
+    "build:backend": "node scripts/build-backend.cjs",
+    "build:dist": "electron-builder --publish never",
+    "build": "npm run build:backend && npm run build:frontend && npm run build:dist",
+    "preview": "vite preview",
+    "setup:python": "node scripts/setup-python.cjs",
+    "setup:ffmpeg": "node scripts/download-ffmpeg.cjs",
+    "setup:all": "npm run setup:python && npm run setup:ffmpeg && npm run setup:deno && npm run setup:chromaprint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:backend": "cd backend && \"venv\\Scripts\\python.exe\" -m pytest -q",
+    "setup:deno": "node scripts/download-deno.cjs",
+    "setup:chromaprint": "node scripts/download-chromaprint.cjs",
+    "release": "npm run build:backend && npm run build:frontend && electron-builder --publish always"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-select": "^2.1.4",
+    "@radix-ui/react-switch": "^1.1.2",
+    "@radix-ui/react-tooltip": "^1.1.6",
+    "clsx": "^2.1.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
+    "framer-motion": "^11.12.0",
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^7.1.0",
+    "wavesurfer.js": "^7.8.8",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "jsdom": "^28.1.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^4.0.18"
+  },
+  "build": {
+    "appId": "com.urgendorjee.cadence",
+    "productName": "Cadence",
+    "copyright": "Copyright (c) 2026 Urgen Dorjee",
+    "directories": {
+      "buildResources": "build",
+      "output": "C:/temp/Cadence-release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "ffmpeg.exe",
+          "ffprobe.exe"
+        ]
+      },
+      {
+        "from": "resources/deno",
+        "to": "deno",
+        "filter": [
+          "deno.exe"
+        ]
+      },
+      {
+        "from": "resources/chromaprint",
+        "to": "chromaprint",
+        "filter": [
+          "fpcalc.exe"
+        ]
+      },
+      {
+        "from": "C:/temp/cadence-backend-build/backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "shortcutName": "Cadence",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "Cadence-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Urgen-Dorjee",
+        "repo": "cadence-releases",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

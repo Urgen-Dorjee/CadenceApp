@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Cadence design tokens ("R G B" so Tailwind can add alpha).
+  Layout: a chrome frame (title bar, sidebar, status bar) around one rounded
+  content panel. Dark is the default; [data-theme="light"] switches palettes.
+*/
+@layer base {
+  :root {
+    --chrome: 13 14 18;
+    --canvas: 18 20 25;
+    --surface: 24 27 33;
+    --raised: 31 35 43;
+    --sunken: 11 12 15;
+    --line: 39 43 53;
+    --line-strong: 55 61 74;
+    --ink: 236 238 243;
+    --muted: 156 162 177;
+    --faint: 106 112 128;
+    --accent: 45 212 191;
+    --accent-ink: 3 28 25;
+    --ok: 74 222 128;
+    --warn: 245 177 72;
+    --danger: 248 113 113;
+    --seg1: 45 212 191;
+    --seg2: 96 165 250;
+    --seg3: 192 132 252;
+    --seg4: 245 177 72;
+    color-scheme: dark;
+  }
+
+  :root[data-theme='light'] {
+    --chrome: 255 255 255;
+    --canvas: 246 247 249;
+    --surface: 255 255 255;
+    --raised: 241 243 246;
+    --sunken: 236 238 242;
+    --line: 226 229 235;
+    --line-strong: 206 211 220;
+    --ink: 16 18 23;
+    --muted: 82 89 105;
+    --faint: 135 142 157;
+    --accent: 13 148 136;
+    --accent-ink: 255 255 255;
+    --ok: 21 128 61;
+    --warn: 180 98 9;
+    --danger: 200 40 40;
+    --seg1: 13 148 136;
+    --seg2: 37 99 235;
+    --seg3: 147 51 234;
+    --seg4: 202 128 4;
+    color-scheme: light;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-chrome text-ink font-sans antialiased;
+    font-size: 13.5px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.3);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-strong));
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--faint));
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .drag {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium transition-colors
+      disabled:opacity-45 disabled:cursor-not-allowed select-none whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-accent-ink hover:brightness-110 shadow-[inset_0_1px_0_rgb(255_255_255/0.18)];
+  }
+  .btn-secondary {
+    @apply btn bg-raised text-ink border border-line hover:border-line-strong hover:bg-raised/80;
+  }
+  .btn-ghost {
+    @apply btn text-muted hover:text-ink hover:bg-raised;
+  }
+  .btn-danger {
+    @apply btn bg-danger/10 text-danger hover:bg-danger/20;
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center w-8 h-8 rounded-md text-muted hover:text-ink hover:bg-raised transition-colors
+      disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .field {
+    @apply h-9 w-full rounded-md bg-sunken border border-line px-3 text-[13px] text-ink placeholder:text-faint
+      focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors;
+  }
+  .field-inline {
+    @apply h-8 w-full rounded bg-transparent border border-transparent px-2 text-[13px] text-ink
+      hover:border-line focus:outline-none focus:border-accent focus:bg-sunken transition-colors;
+  }
+  .label {
+    @apply text-xs font-medium text-muted;
+  }
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-faint;
+  }
+  .panel {
+    @apply bg-surface border border-line rounded-lg;
+  }
+  .kbd {
+    @apply inline-flex items-center h-5 px-1.5 rounded border border-line bg-raised text-[11px] font-mono text-muted;
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}

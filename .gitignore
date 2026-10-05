@@ -1,0 +1,85 @@
+node_modules/
+dist/
+dist-electron/
+dist-release/
+*.local
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+*.py[codz]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+
+# Resources (downloaded at runtime)
+resources/ffmpeg/ffmpeg.exe
+resources/ffmpeg/ffprobe.exe
+resources/ffmpeg/ffplay.exe
+resources/ffmpeg/*.zip
+resources/deno/deno.exe
+resources/deno/*.zip
+resources/chromaprint/fpcalc.exe
+resources/chromaprint/*.zip
+resources/temp/
+resources/models/
+
+# Environment
+.env
+.env.local
+.envrc
+.venv
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build output
+build/
+release/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+electron-log/
+
+# Media files (samples/test videos)
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.jpg
+*.png
+!resources/icon.ico
+!resources/icon.png
+
+# Test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+coverage.xml
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+.pytype/
+.ruff_cache/
+
+# TypeScript build cache
+*.tsbuildinfo

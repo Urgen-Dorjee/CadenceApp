@@ -1,0 +1,329 @@
+"""Runs a job through its stages and keeps the database and UI in sync.
+
+analyze: resolve -> download -> find tracklist -> snap cuts  => status "review"
+export:  cut + encode + tag each approved song               => status "completed"
+"""
+
+import asyncio
+import logging
+import os
+import shutil
+import threading
+import time
+from typing import Any
+
+from config import load_preferences, settings
+from core.db import get_store
+from core.websocket_manager import manager as ws
+from services import audio_analysis, audio_profile, exporter, identify, library, name_cleanup, song_index, tracklist, youtube
+
+log = logging.getLogger(__name__)
+
+_analyze_slots = asyncio.Semaphore(2)
+_export_slots = asyncio.Semaphore(1)
+_cancel_flags: dict[str, threading.Event] = {}
+_running: dict[str, asyncio.Task] = {}
+
+
+def job_dir(job_id: str) -> str:
+    return os.path.join(settings.work_dir, job_id)
+
+
+async def _update(job_id: str, **fields: Any) -> dict[str, Any] | None:
+    job = get_store().update(job_id, **fields)
+    if job:
+        await ws.send_job(job)
+    return job
+
+
+def _cancelled(job_id: str) -> bool:
+    flag = _cancel_flags.get(job_id)
+    return bool(flag and flag.is_set())
+
+
+def _check_cancel(job_id: str) -> None:
+    if _cancelled(job_id):
+        raise youtube.Cancelled()
+
+
+def _start(job_id: str, coro) -> None:
+    _cancel_flags[job_id] = threading.Event()
+    task = asyncio.create_task(coro)
+    _running[job_id] = task
+    task.add_done_callback(lambda _t: _running.pop(job_id, None))
+
+
+def is_running(job_id: str) -> bool:
+    return job_id in _running
+
+
+def start_analysis(job_id: str) -> None:
+    _start(job_id, _analyze(job_id))
+
+
+def start_export(job_id: str) -> None:
+    _start(job_id, _export(job_id))
+
+
+def cancel(job_id: str) -> bool:
+    flag = _cancel_flags.get(job_id)
+    if flag and job_id in _running:
+        flag.set()
+        return True
+    return False
+
+
+async def remove_downloads(job_id: str, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Delete downloaded source audio but keep thumbnails and waveforms. Returns updated sources."""
+    updated = []
+    for source in sources:
+        path = source.get("path")
+        if path and os.path.isfile(path):
+            await asyncio.to_thread(os.remove, path)
+        updated.append({**source, "path": ""})
+    return updated
+
+
+async def delete_work_files(job_id: str) -> None:
+    await asyncio.to_thread(shutil.rmtree, job_dir(job_id), True)
+
+
+class _Progress:
+    """Throttles progress pushes coming from yt-dlp's download thread."""
+
+    def __init__(self, job_id: str, loop: asyncio.AbstractEventLoop, base: float, span: float, label: str):
+        self.job_id, self.loop, self.base, self.span, self.label = job_id, loop, base, span, label
+        self._last = (0.0, -1.0)
+
+    def __call__(self, fraction: float) -> None:
+        now, pct = time.monotonic(), self.base + self.span * fraction
+        if pct - self._last[1] < 1 and now - self._last[0] < 0.5 and fraction < 1:
+            return
+        self._last = (now, pct)
+        asyncio.run_coroutine_threadsafe(
+            _update(self.job_id, progress=round(pct, 1), message=f"{self.label} {fraction * 100:.0f}%"), self.loop
+        )
+
+
+async def _analyze(job_id: str) -> None:
+    store = get_store()
+    job = store.get(job_id)
+    if not job:
+        return
+    loop = asyncio.get_running_loop()
+    out_dir = job_dir(job_id)
+    try:
+        async with _analyze_slots:
+            await _update(job_id, status="resolving", progress=2, message="Reading video details", error=None)
+            info = await youtube.resolve(job["url"])
+            _check_cancel(job_id)
+
+            if info.get("_type") == "playlist":
+                await _analyze_playlist(job_id, info, out_dir, loop)
+            else:
+                await _analyze_video(job_id, info, out_dir, loop)
+    except youtube.Cancelled:
+        await _update(job_id, status="cancelled", message="Cancelled", progress=0)
+    except Exception as e:  # noqa: BLE001 - shown to the user, full trace in the log
+        log.exception("Analysis failed for job %s", job_id)
+        await _update(job_id, status="failed", error=_friendly_error(e), message="")
+
+
+async def _analyze_video(job_id: str, info: dict[str, Any], out_dir: str, loop: asyncio.AbstractEventLoop) -> None:
+    url = info.get("webpage_url") or get_store().get(job_id)["url"]
+    title = info.get("title") or "Untitled"
+    await _update(job_id, title=title, progress=5, message="Looking for a tracklist")
+
+    tracks = tracklist.tracks_from_metadata(info, info["id"])
+    if not tracks:
+        await _update(job_id, message="Checking comments for a tracklist")
+        info["comments"] = await youtube.fetch_comments(url)
+        tracks = tracklist.tracks_from_metadata(info, info["id"])
+    _check_cancel(job_id)
+
+    await _update(job_id, status="downloading", progress=8, message="Downloading audio")
+    downloaded = await youtube.download_audio(
+        url, out_dir, _Progress(job_id, loop, 8, 72, "Downloading audio"), lambda: _cancelled(job_id)
+    )
+    _check_cancel(job_id)
+    audio_path = downloaded["_audio_path"]
+    duration = float(downloaded.get("duration") or info.get("duration") or 0)
+    source = {
+        "id": info["id"], "title": title, "url": url, "duration": duration,
+        "path": audio_path, "thumbnail": downloaded.get("_thumbnail_path"),
+        "uploader": info.get("uploader") or info.get("channel") or "",
+        "description": info.get("description") or "",
+    }
+
+    prefs = load_preferences()
+    await _update(job_id, status="analyzing", progress=80, message="Reading the waveform")
+    try:
+        profile = await asyncio.to_thread(
+            audio_profile.build_profile, audio_path, duration,
+            _Progress(job_id, loop, 80, 12, "Reading the waveform"), lambda: _cancelled(job_id),
+        )
+    except InterruptedError as e:
+        raise youtube.Cancelled() from e
+    audio_profile.save_peaks(out_dir, info["id"], profile)
+    duration = duration or profile.duration
+    source["duration"] = duration
+
+    if not tracks:
+        await _update(job_id, progress=93, message="No tracklist found. Listening for where songs change")
+        tracks = audio_analysis.tracks_from_profile(profile, info["id"])
+    else:
+        await _update(job_id, progress=93, message="Fine-tuning cut points")
+    if tracks:
+        tracks[-1]["end"] = min(tracks[-1]["end"], duration) or duration
+    await audio_analysis.refine_boundaries(tracks, audio_path, duration, prefs.snap_window_s)
+    tracklist.flag_short_tracks(tracks)
+    _check_cancel(job_id)
+
+    if prefs.identify_songs and prefs.acoustid_key and any(identify.needs_name(t) for t in tracks):
+        async def progress(i: int, total: int) -> None:
+            await _update(job_id, progress=96, message=f"Identifying songs {i + 1} of {total}")
+        try:
+            await identify.identify_tracks(tracks, {info["id"]: source}, prefs.acoustid_key, on_progress=progress)
+        except identify.IdentifyError as e:
+            log.warning("Song identification skipped: %s", e)
+
+    collection = tracklist.classify_collection(title, len(tracks), info.get("uploader") or info.get("channel") or "")
+    if collection["type"] == "single" and tracks:
+        tracks[0]["title"] = tracklist.clean_title(title)
+
+    if prefs.tidy_names and prefs.anthropic_api_key:
+        await _update(job_id, progress=98, message="Tidying names with Claude")
+        try:
+            suggestion = await name_cleanup.suggest_names(
+                prefs.anthropic_api_key, {"title": title, "sources": [source]}, tracks
+            )
+            tracks, collection = name_cleanup.apply_suggestions(tracks, collection, suggestion)
+        except name_cleanup.NameCleanupError as e:
+            log.warning("Name tidying skipped: %s", e)
+    await _update(
+        job_id, status="review", progress=100, sources=[source], tracks=tracks, collection=collection,
+        thumbnail=source["thumbnail"], message=_review_message(tracks),
+    )
+
+
+async def _analyze_playlist(job_id: str, info: dict[str, Any], out_dir: str, loop: asyncio.AbstractEventLoop) -> None:
+    entries = [e for e in (info.get("entries") or []) if e and e.get("id")]
+    if not entries:
+        raise RuntimeError("This playlist has no playable videos.")
+    title = info.get("title") or "Playlist"
+    await _update(job_id, title=title, status="downloading", progress=5, message=f"Downloading {len(entries)} videos")
+
+    sources, tracks = [], []
+    span = 90 / len(entries)
+    for i, entry in enumerate(entries):
+        _check_cancel(job_id)
+        url = entry.get("url") or f"https://www.youtube.com/watch?v={entry['id']}"
+        label = f"Downloading {i + 1} of {len(entries)}"
+        try:
+            downloaded = await youtube.download_audio(
+                url, out_dir, _Progress(job_id, loop, 5 + span * i, span, label), lambda: _cancelled(job_id)
+            )
+        except youtube.Cancelled:
+            raise
+        except Exception as e:  # noqa: BLE001 - one private or removed video should not sink the playlist
+            log.warning("Skipping playlist entry %s: %s", entry.get("id"), e)
+            continue
+        duration = float(downloaded.get("duration") or 0)
+        sources.append({
+            "id": downloaded["id"], "title": downloaded.get("title") or entry.get("title") or "",
+            "url": url, "duration": duration, "path": downloaded["_audio_path"],
+            "thumbnail": downloaded.get("_thumbnail_path"),
+        })
+        tracks.append(tracklist.make_track(
+            title=tracklist.clean_title(downloaded.get("title") or entry.get("title") or f"Track {i + 1}"),
+            start=0, end=duration, origin="playlist", source_id=downloaded["id"],
+        ))
+
+    if not tracks:
+        raise RuntimeError("None of the videos in this playlist could be downloaded.")
+    collection = tracklist.classify_collection(title, len(tracks), info.get("uploader") or info.get("channel") or "")
+    await _update(
+        job_id, status="review", progress=100, sources=sources, tracks=tracks, collection=collection,
+        thumbnail=sources[0]["thumbnail"], message=_review_message(tracks),
+    )
+
+
+def _review_message(tracks: list[dict[str, Any]]) -> str:
+    flagged = sum(1 for t in tracks if t["confidence"] < 0.7)
+    found = f"{len(tracks)} song{'s' if len(tracks) != 1 else ''} found"
+    return f"{found}, {flagged} need a check" if flagged else f"{found}, ready to export"
+
+
+async def _export(job_id: str) -> None:
+    store = get_store()
+    job = store.get(job_id)
+    if not job:
+        return
+    try:
+        async with _export_slots:
+            prefs = load_preferences()
+            sources = {s["id"]: s for s in job["sources"]}
+            chosen = [t for t in job["tracks"] if t.get("include", True)]
+            collection = job["collection"]
+            root = job.get("destination") or prefs.library_dir
+            outputs: list[dict[str, Any]] = []
+            await _update(job_id, status="exporting", progress=0, message="Saving songs", error=None, outputs=[])
+
+            for n, track in enumerate(chosen, start=1):
+                _check_cancel(job_id)
+                source = sources[track["source_id"]]
+                rel = library.relative_path(track, n, collection, prefs)
+                dest = library.unique_path(os.path.join(root, f"{rel}.{prefs.audio_format}"))
+                await _update(
+                    job_id, progress=round(100 * (n - 1) / len(chosen), 1),
+                    message=f"Saving {n} of {len(chosen)}: {track['title']}",
+                )
+                await exporter.cut_track(
+                    source["path"], track["start"], track["end"], dest,
+                    prefs.audio_format, prefs.audio_bitrate, prefs.edge_fade_ms,
+                )
+                album_artist = collection.get("artist") or ""
+                await asyncio.to_thread(
+                    exporter.write_tags, dest, prefs.audio_format,
+                    {
+                        "title": track["title"],
+                        "artist": track.get("artist") or album_artist,
+                        "album_artist": album_artist,
+                        "album": collection.get("album") or collection.get("name") or "",
+                        "year": collection.get("year") or "",
+                        "track": n, "total": len(chosen),
+                    },
+                    source.get("thumbnail"),
+                )
+                outputs.append({"track_id": track["id"], "title": track["title"], "path": dest})
+
+            folder = os.path.commonpath([os.path.dirname(o["path"]) for o in outputs]) if outputs else root
+            await asyncio.to_thread(song_index.get_index().add_paths, [o["path"] for o in outputs])
+            sources_after = job["sources"]
+            if not prefs.keep_downloads:
+                sources_after = await remove_downloads(job_id, job["sources"])
+            await _update(
+                job_id, status="completed", progress=100, outputs=outputs, sources=sources_after,
+                message=f"Saved {len(outputs)} song{'s' if len(outputs) != 1 else ''} to {folder}",
+            )
+    except youtube.Cancelled:
+        await _update(job_id, status="review", progress=0, message="Export cancelled. Songs already saved were kept.")
+    except Exception as e:  # noqa: BLE001
+        log.exception("Export failed for job %s", job_id)
+        await _update(job_id, status="review", error=_friendly_error(e), message="Export failed")
+
+
+def _friendly_error(e: Exception) -> str:
+    text = str(e).replace("ERROR: ", "").strip()
+    lowered = text.lower()
+    if "private video" in lowered:
+        return "This video is private."
+    if "video unavailable" in lowered or "not available" in lowered:
+        return "This video is unavailable. It may have been removed or blocked in your region."
+    if "sign in to confirm" in lowered:
+        return "YouTube asked to confirm you are not a bot. Try again later, or update yt-dlp in Settings."
+    if "unsupported url" in lowered:
+        return "That link isn't a YouTube video or playlist."
+    if "ffmpeg not found" in lowered:
+        return text
+    return text[:400] or e.__class__.__name__

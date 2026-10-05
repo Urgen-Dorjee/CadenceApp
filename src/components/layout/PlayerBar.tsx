@@ -1,0 +1,95 @@
+import { useState } from 'react'
+import { Music2, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, FolderOpen, X } from 'lucide-react'
+import { api } from '../../services/api'
+import { usePlayerStore } from '../../stores/playerStore'
+import { formatTime } from '../../lib/time'
+
+export function SongCover({ id, hasCover, className }: { id: string; hasCover: boolean; className: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!hasCover || failed) {
+    return (
+      <div className={`${className} bg-raised flex items-center justify-center text-faint`} aria-hidden="true">
+        <Music2 size={14} />
+      </div>
+    )
+  }
+  return <img src={api.songCoverUrl(id)} alt="" onError={() => setFailed(true)} className={`${className} object-cover bg-raised`} />
+}
+
+/** Library playback, shown above the status bar while something is queued. */
+export default function PlayerBar() {
+  const song = usePlayerStore((s) => s.queue[s.index])
+  const { playing, time, duration, volume, index, queue, toggle, next, previous, seek, setVolume, close } = usePlayerStore()
+  if (!song) return null
+  const total = duration || song.duration
+
+  return (
+    <div className="h-16 shrink-0 bg-chrome border-t border-line flex items-center gap-4 px-4" role="region" aria-label="Now playing">
+      <div className="flex items-center gap-3 w-72 min-w-0">
+        <SongCover id={song.id} hasCover={!!song.has_cover} className="w-10 h-10 rounded shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium truncate">{song.title}</p>
+          <p className="text-xs text-muted truncate">{song.artist || song.album_artist || song.album || 'Unknown artist'}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center gap-1 min-w-0 max-w-2xl mx-auto">
+        <div className="flex items-center gap-1">
+          <button className="btn-icon" onClick={previous} aria-label="Previous song">
+            <SkipBack size={16} />
+          </button>
+          <button
+            className="w-8 h-8 rounded-full bg-ink text-canvas flex items-center justify-center hover:scale-105 transition-transform"
+            onClick={toggle}
+            aria-label={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+          </button>
+          <button className="btn-icon" onClick={next} disabled={index + 1 >= queue.length} aria-label="Next song">
+            <SkipForward size={16} />
+          </button>
+        </div>
+        <div className="w-full flex items-center gap-2 text-[11px] text-faint tnum font-mono">
+          <span className="w-10 text-right">{formatTime(time, false)}</span>
+          <input
+            type="range"
+            min={0}
+            max={total || 1}
+            step={0.5}
+            value={Math.min(time, total || 0)}
+            onChange={(e) => seek(Number(e.target.value))}
+            className="flex-1 h-1 accent-[rgb(var(--accent))]"
+            aria-label="Position in song"
+          />
+          <span className="w-10">{formatTime(total, false)}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 w-72 justify-end">
+        <button
+          className="btn-icon"
+          onClick={() => setVolume(volume > 0 ? 0 : 1)}
+          aria-label={volume > 0 ? 'Mute' : 'Unmute'}
+        >
+          {volume > 0 ? <Volume2 size={16} /> : <VolumeX size={16} />}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          className="w-24 h-1 accent-[rgb(var(--accent))]"
+          aria-label="Volume"
+        />
+        <button className="btn-icon" onClick={() => window.electronAPI?.showItemInFolder(song.path)} aria-label="Show in folder" title="Show in folder">
+          <FolderOpen size={15} />
+        </button>
+        <button className="btn-icon" onClick={close} aria-label="Close player" title="Close player">
+          <X size={15} />
+        </button>
+      </div>
+    </div>
+  )
+}
