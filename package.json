@@ -130,7 +130,7 @@
       {
         "provider": "github",
         "owner": "Urgen-Dorjee",
-        "repo": "cadence-releases",
+        "repo": "CadenceApp",
         "releaseType": "release"
       }
     ]

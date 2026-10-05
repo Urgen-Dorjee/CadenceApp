@@ -10,6 +10,8 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+**[⬇ Download the latest Windows installer](https://github.com/Urgen-Dorjee/CadenceApp/releases/latest)** (`Cadence-Setup-<version>.exe`). Installed copies update themselves.
+
 ---
 
 ## Contents
@@ -221,10 +223,10 @@ This packages a standalone Python runtime with only the dependencies in `backend
 
 ### Publish an update
 
-Installed copies check for updates every six hours, download them in the background and show **Restart to update**. Updates are published to the public [`Urgen-Dorjee/cadence-releases`](https://github.com/Urgen-Dorjee/cadence-releases) repository (configured under `build.publish` in `package.json`).
+Installed copies check for updates every six hours, download them in the background and show **Restart to update**. Updates are published to this repository's [Releases](https://github.com/Urgen-Dorjee/CadenceApp/releases) (configured under `build.publish` in `package.json`).
 
 1. Bump `version` in `package.json` and commit.
-2. Create a GitHub token with **Contents: read and write** on `cadence-releases`.
+2. Create a GitHub token with **Contents: read and write** on `CadenceApp`.
 3. Publish:
 
    ```powershell
