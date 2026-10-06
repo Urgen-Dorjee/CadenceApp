@@ -14,6 +14,8 @@ interface Props {
   canMerge: boolean
   hasCutBefore: boolean
   showArtist: boolean
+  /** "Already in your library as …" when this song was saved before. */
+  inLibrary?: string
   onChange: (id: string, patch: Partial<Track>) => void
   onStart: (index: number, t: number) => void
   onEnd: (index: number, t: number) => void
@@ -68,6 +70,11 @@ function TrackRow(p: Props) {
               title={`Recognised by AcoustID (${Math.round((track.match.score ?? 0) * 100)}% match)${track.match.album ? ` · from “${track.match.album}”` : ''}`}
             >
               Identified
+            </span>
+          )}
+          {p.inLibrary && (
+            <span className="shrink-0 inline-flex items-center h-5 px-1.5 rounded-full bg-warn/15 text-warn text-[10.5px] font-semibold" title={p.inLibrary}>
+              In library
             </span>
           )}
           {track.match?.source === 'claude' && (

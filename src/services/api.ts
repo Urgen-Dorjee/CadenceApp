@@ -59,6 +59,14 @@ export interface ReviewPayload {
   replace_previous?: boolean
 }
 
+/** A library song that a song of this split duplicates. */
+export interface LibraryMatch {
+  path: string
+  title: string
+  artist: string
+  album: string
+}
+
 export interface StorageInfo {
   library_dir: string
   library_exists: boolean
@@ -94,6 +102,8 @@ export const api = {
   identifyJob: (id: string, payload: ReviewPayload) => request<{ tracks: Track[]; named: number }>('POST', `/api/jobs/${id}/identify`, payload),
   tidyNames: (id: string, payload: ReviewPayload) =>
     request<{ tracks: Track[]; collection: Collection; changed: number }>('POST', `/api/jobs/${id}/tidy-names`, payload),
+  findDuplicates: (id: string, payload: ReviewPayload) =>
+    request<Record<string, LibraryMatch[]>>('POST', `/api/jobs/${id}/duplicates`, payload),
   importTracklist: (id: string, text: string) =>
     request<{ tracks: Track[]; collection: Partial<Collection>; format: 'starts' | 'lengths' | 'cue'; snapped: boolean }>(
       'POST',

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic, Undo2, Redo2, Keyboard } from 'lucide-react'
+import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic, Undo2, Redo2, Keyboard, Library } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { api } from '../services/api'
+import { api, type LibraryMatch } from '../services/api'
 import { useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
@@ -92,6 +92,26 @@ export default function ReviewPage() {
       cancelled = true
     }
   }, [id, singleSource?.id])
+  // Songs already in the library, checked again a moment after names, singers or times change.
+  const [duplicates, setDuplicates] = useState<Record<string, LibraryMatch[]>>({})
+  const dupeKey = JSON.stringify(tracks.map((t) => [t.id, t.title, t.artist, Math.round(t.end - t.start), t.include]))
+  const reviewable = job?.status === 'review' || job?.status === 'completed'
+  useEffect(() => {
+    if (!reviewable || !tracks.length) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      api.findDuplicates(id, { tracks, collection }).then((d) => !cancelled && setDuplicates(d)).catch(() => {})
+    }, 600)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, dupeKey, reviewable])
+  const duplicateIds = tracks.filter((t) => t.include && duplicates[t.id]).map((t) => t.id)
+  const describeMatch = (matches: LibraryMatch[]) =>
+    `Already in your library: ${matches.map((m) => [m.artist, m.title].filter(Boolean).join(' - ') + (m.album ? ` (${m.album})` : '')).join('; ')}`
+
   const included = tracks.filter((t) => t.include)
   const flagged = tracks.filter(needsCheck).length
   const showArtist = collection.type !== 'artist'
@@ -646,6 +666,20 @@ export default function ReviewPage() {
             </p>
           )}
 
+          {duplicateIds.length > 0 && !exporting && (
+            <div className="flex items-center gap-3 rounded-md border border-warn/40 bg-warn/5 px-3 py-2" role="status">
+              <Library size={15} className="text-warn shrink-0" aria-hidden="true" />
+              <p className="flex-1 text-[13px]">
+                {duplicateIds.length === 1 ? '1 song is' : `${duplicateIds.length} songs are`} already in your library.
+              </p>
+              <button
+                className="btn-secondary h-7 px-2.5"
+                onClick={() => edit((t) => t.map((x) => (duplicateIds.includes(x.id) ? { ...x, include: false } : x)))}
+              >
+                Skip {duplicateIds.length === 1 ? 'it' : 'them'}
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto -mx-4">
             <table className="w-full text-sm">
               <thead>
@@ -684,6 +718,7 @@ export default function ReviewPage() {
                     canMerge={canMergeWithNext(tracks, index)}
                     hasCutBefore={index > 0 && canMergeWithNext(tracks, index - 1)}
                     showArtist={showArtist}
+                    inLibrary={track.include && duplicates[track.id] ? describeMatch(duplicates[track.id]) : undefined}
                     onChange={onChange}
                     onStart={onStart}
                     onEnd={onEnd}

@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
 from config import load_preferences
-from services import audio_analysis, audio_profile, cover, identify, local_media, name_cleanup, pipeline, tracklist
+from services import (
+    audio_analysis, audio_profile, cover, duplicates, identify, local_media, name_cleanup, pipeline, song_index, tracklist,
+)
 
 router = APIRouter()
 
@@ -200,6 +202,16 @@ async def tidy_names(job_id: str, body: ReviewIn):
     new_tracks, new_collection = name_cleanup.apply_suggestions(tracks, collection, suggestion)
     changed = sum(1 for a, b in zip(tracks, new_tracks) if a["title"] != b["title"] or a["artist"] != b["artist"])
     return {"tracks": new_tracks, "collection": new_collection, "changed": changed}
+
+
+@router.post("/jobs/{job_id}/duplicates")
+async def find_duplicates(job_id: str, body: ReviewIn):
+    """Songs of this split that are already in the library: {track id: [matching songs]}."""
+    job = _get_job(job_id)
+    tracks = [t.model_dump() for t in body.tracks]
+    songs = await asyncio.to_thread(song_index.get_index().list)
+    own = [o["path"] for o in job.get("outputs") or []]
+    return await asyncio.to_thread(duplicates.find, tracks, songs, own)
 
 
 @router.post("/jobs/{job_id}/tracklist")
