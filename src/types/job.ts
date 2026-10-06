@@ -87,6 +87,8 @@ export interface Preferences {
   cookies_from: '' | 'firefox' | 'chrome' | 'edge' | 'brave' | 'file'
   cookies_file: string
   proxy: string
+  /** The welcome screen was completed. */
+  onboarded: boolean
   identify_songs: boolean
   acoustid_key: string
   tidy_names: boolean

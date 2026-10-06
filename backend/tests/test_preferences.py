@@ -34,6 +34,12 @@ def test_custom_snap_window_is_kept():
     assert load_preferences().snap_window_s == 3.5
 
 
+def test_existing_users_skip_the_welcome_screen():
+    _write({"audio_format": "flac"})
+    assert load_preferences().onboarded is True
+    assert Preferences().onboarded is False  # new users see it
+
+
 def test_snap_window_chosen_after_upgrade_is_kept():
     save_preferences(Preferences(snap_window_s=2.0))
     assert load_preferences().snap_window_s == 2.0

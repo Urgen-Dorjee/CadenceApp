@@ -114,6 +114,8 @@ class Preferences(BaseModel):
     album_template: str = "Albums/{album}{year_suffix}/{track:02} - {title}"
     collection_template: str = "Collections/{collection}/{track:02} - {title}"
     single_template: str = "Singles/{title}"
+    # The welcome screen was completed (or skipped because Cadence was already in use).
+    onboarded: bool = False
     version: int = PREFS_VERSION
 
 
@@ -121,6 +123,8 @@ def load_preferences() -> Preferences:
     try:
         with open(settings.prefs_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        # A settings file from before the welcome screen existed: Cadence is already set up.
+        data.setdefault("onboarded", True)
         if data.get("version", 1) < 2:
             # ±2 s was the old default and too narrow to reach the real gap between songs.
             if data.get("snap_window_s") == 2.0:

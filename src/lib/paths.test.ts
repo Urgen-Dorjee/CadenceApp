@@ -13,6 +13,7 @@ const prefs: Preferences = {
   cookies_from: '',
   cookies_file: '',
   proxy: '',
+  onboarded: true,
   identify_songs: false,
   acoustid_key: '',
   tidy_names: false,

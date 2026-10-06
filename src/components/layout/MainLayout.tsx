@@ -1,9 +1,12 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import PlayerBar from './PlayerBar'
+import WelcomeDialog from './WelcomeDialog'
+import { usePrefsStore } from '../../stores/prefsStore'
 import { useAppStore } from '../../stores/appStore'
 import { sortedJobs, useJobsStore } from '../../stores/jobsStore'
 import { isRunning } from '../../types/job'
@@ -83,6 +86,34 @@ function EngineAlert() {
   return null
 }
 
+/** The welcome screen, for new users only: no settings saved yet and no splits. */
+function Welcome() {
+  const prefs = usePrefsStore((s) => s.prefs)
+  const update = usePrefsStore((s) => s.update)
+  const jobsLoaded = useJobsStore((s) => s.loaded)
+  const hasJobs = useJobsStore((s) => Object.keys(s.jobs).length > 0)
+  const pending = Boolean(prefs && !prefs.onboarded && jobsLoaded)
+
+  // Someone with splits already knows Cadence: don't show it, and don't show it later either.
+  useEffect(() => {
+    if (pending && hasJobs) update({ onboarded: true }).catch(() => {})
+  }, [pending, hasJobs, update])
+
+  if (!pending || hasJobs || !prefs) return null
+  return (
+    <WelcomeDialog
+      initial={{ library_dir: prefs.library_dir, audio_format: prefs.audio_format, loudness: prefs.loudness === 'off' ? 'tags' : prefs.loudness }}
+      onFinish={async (choices) => {
+        try {
+          await update({ ...choices, save_mode: 'library', onboarded: true })
+        } catch (e) {
+          toast.error((e as Error).message)
+        }
+      }}
+    />
+  )
+}
+
 export default function MainLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col h-full">
@@ -101,6 +132,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       </div>
       <PlayerBar />
       <StatusBar />
+      <Welcome />
     </div>
   )
 }
