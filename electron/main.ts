@@ -178,6 +178,17 @@ function registerIpcHandlers() {
     return result.canceled ? [] : result.filePaths
   })
 
+  ipcMain.handle('dialog:openCookies', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose your cookies.txt file',
+      buttonLabel: 'Use this file',
+      properties: ['openFile'],
+      filters: [{ name: 'Cookies file', extensions: ['txt'] }, { name: 'All files', extensions: ['*'] }],
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
   ipcMain.handle('dialog:openImage', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {

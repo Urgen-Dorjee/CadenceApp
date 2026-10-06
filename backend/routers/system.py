@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,12 @@ async def update_preferences(prefs: Preferences):
         raise HTTPException(status_code=422, detail="Edge fade must be between 0 and 200 ms")
     if not 0 <= prefs.snap_window_s <= 10:
         raise HTTPException(status_code=422, detail="Snap window must be between 0 and 10 seconds")
+    if prefs.cookies_from not in ("", "firefox", "chrome", "edge", "brave", "file"):
+        raise HTTPException(status_code=422, detail="Choose Firefox, Chrome, Edge, Brave or a cookies.txt file")
+    if prefs.cookies_from == "file" and not os.path.isfile(prefs.cookies_file):
+        raise HTTPException(status_code=422, detail="Choose your cookies.txt file")
+    if prefs.proxy and not re.match(r"^(https?|socks5h?|socks4a?)://\S+$", prefs.proxy.strip()):
+        raise HTTPException(status_code=422, detail="Proxy must look like http://host:port or socks5://host:port")
     if prefs.lyrics not in ("off", "embed", "lrc"):
         raise HTTPException(status_code=422, detail="Lyrics must be off, embed or lrc")
     if prefs.loudness not in ("off", "tags", "normalize"):

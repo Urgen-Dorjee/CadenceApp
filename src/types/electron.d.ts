@@ -11,6 +11,7 @@ interface ElectronAPI {
   selectFolder: (options?: { defaultPath?: string; title?: string }) => Promise<string | null>
   selectMediaFiles: () => Promise<string[]>
   selectImage: () => Promise<string | null>
+  selectCookiesFile: () => Promise<string | null>
   pathForFile: (file: File) => string
   setTheme: (theme: 'system' | 'dark' | 'light') => Promise<boolean>
   onSystemThemeChange: (callback: () => void) => () => void

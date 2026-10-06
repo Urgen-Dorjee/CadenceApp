@@ -83,6 +83,10 @@ export interface Preferences {
   write_playlist: boolean
   square_cover: boolean
   lyrics: 'off' | 'embed' | 'lrc'
+  /** YouTube sign-in: '' none, a browser to read cookies from, or 'file' for cookies_file. */
+  cookies_from: '' | 'firefox' | 'chrome' | 'edge' | 'brave' | 'file'
+  cookies_file: string
+  proxy: string
   identify_songs: boolean
   acoustid_key: string
   tidy_names: boolean

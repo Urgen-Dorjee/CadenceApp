@@ -71,6 +71,13 @@ class Preferences(BaseModel):
     save_mode: str = "library"
     # Show the saved songs in Explorer when saving finishes.
     open_when_done: bool = True
+    # YouTube sign-in for age-restricted videos and "confirm you're not a bot" checks:
+    # "" (none), a browser to read cookies from ("firefox", "chrome", "edge", "brave"),
+    # or "file" to use cookies_file (a cookies.txt export).
+    cookies_from: str = ""
+    cookies_file: str = ""
+    # Proxy for YouTube, e.g. "http://host:8080" or "socks5://127.0.0.1:1080". Empty = none.
+    proxy: str = ""
     # Lyrics from LRCLIB when saving: "off", "embed" (in the song's tags) or "lrc"
     # (embedded, plus a synced .lrc file next to each song).
     lyrics: str = "off"

@@ -18,6 +18,7 @@ const SECTIONS = [
   { id: 'claude', label: 'Tidy names' },
   { id: 'audio', label: 'Audio' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'youtube', label: 'YouTube' },
   { id: 'updates', label: 'Updates' },
 ]
 
@@ -544,6 +545,64 @@ export default function SettingsPage() {
                 <Choice key={value} selected={theme === value} onClick={() => setTheme(value)} icon={icon} title={label} note={value === 'system' ? 'Match Windows' : `Always ${label.toLowerCase()}`} />
               ))}
             </div>
+          </Row>
+        </Section>
+
+        <Section id="youtube" title="YouTube" description="For videos that need you signed in, or networks where YouTube is blocked.">
+          <Row
+            title="Use my YouTube sign-in"
+            hint="Age-restricted videos, and YouTube's “confirm you're not a bot” check, need a signed-in browser. Cadence reads that browser's YouTube cookies when downloading; nothing is sent anywhere else. Chrome, Edge and Brave lock them while open, so close the browser first, or use Firefox or a cookies.txt file."
+            htmlFor="cookies-from"
+            stack
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                id="cookies-from"
+                className="field w-56"
+                value={prefs.cookies_from}
+                onChange={async (e) => {
+                  const value = e.target.value as Preferences['cookies_from']
+                  if (value === 'file' && !prefs.cookies_file) {
+                    const file = await window.electronAPI?.selectCookiesFile()
+                    if (file) save({ cookies_from: 'file', cookies_file: file })
+                    return
+                  }
+                  save({ cookies_from: value })
+                }}
+              >
+                <option value="">Don't sign in</option>
+                <option value="firefox">Firefox</option>
+                <option value="chrome">Chrome</option>
+                <option value="edge">Microsoft Edge</option>
+                <option value="brave">Brave</option>
+                <option value="file">A cookies.txt file…</option>
+              </select>
+              {prefs.cookies_from === 'file' && (
+                <>
+                  <span className="text-[12px] font-mono text-muted truncate max-w-xs" title={prefs.cookies_file}>{prefs.cookies_file}</span>
+                  <button
+                    className="btn-ghost h-8"
+                    onClick={async () => {
+                      const file = await window.electronAPI?.selectCookiesFile()
+                      if (file) save({ cookies_file: file })
+                    }}
+                  >
+                    Change file…
+                  </button>
+                </>
+              )}
+            </div>
+          </Row>
+          <Row title="Proxy" hint="Only if YouTube is blocked where you are. For example http://host:8080 or socks5://127.0.0.1:1080." htmlFor="proxy" stack>
+            <input
+              id="proxy"
+              className="field font-mono text-[12.5px] max-w-md"
+              placeholder="No proxy"
+              defaultValue={prefs.proxy}
+              onBlur={(e) => e.target.value.trim() !== prefs.proxy && save({ proxy: e.target.value.trim() })}
+              spellCheck={false}
+              autoComplete="off"
+            />
           </Row>
         </Section>
 

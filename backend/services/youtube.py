@@ -17,12 +17,21 @@ class Cancelled(Exception):
 
 
 def _base_opts() -> dict[str, Any]:
+    from config import load_preferences
+
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
         "js_runtimes": js_runtimes(),
     }
+    prefs = load_preferences()
+    if prefs.cookies_from == "file" and prefs.cookies_file:
+        opts["cookiefile"] = prefs.cookies_file
+    elif prefs.cookies_from:
+        opts["cookiesfrombrowser"] = (prefs.cookies_from,)
+    if prefs.proxy.strip():
+        opts["proxy"] = prefs.proxy.strip()
     try:
         opts["ffmpeg_location"] = os.path.dirname(get_ffmpeg_path())
     except FileNotFoundError:

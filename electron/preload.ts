@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFolder: (options?: { defaultPath?: string; title?: string }) => ipcRenderer.invoke('dialog:openDir', options),
   selectMediaFiles: () => ipcRenderer.invoke('dialog:openMediaFiles'),
   selectImage: () => ipcRenderer.invoke('dialog:openImage'),
+  selectCookiesFile: () => ipcRenderer.invoke('dialog:openCookies'),
   // Full path of a file dropped on the window (File.path no longer exists in sandboxed renderers).
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   setTheme: (theme: string) => ipcRenderer.invoke('theme:set', theme),

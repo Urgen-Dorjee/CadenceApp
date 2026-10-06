@@ -305,6 +305,7 @@ Unsigned installers work, but Windows SmartScreen shows "Windows protected your 
 | Saved songs | `%USERPROFILE%\Music\Cadence` by default |
 
 - **"Sign in to confirm you're not a bot" or downloads failing:** YouTube changes often. Open **Settings → Updates** and update the YouTube downloader (yt-dlp), then restart Cadence.
+- **Age-restricted videos, or the bot check keeps coming back:** in **Settings → YouTube**, choose the browser you're signed in to YouTube with (Firefox works best; close Chrome, Edge or Brave first), or a `cookies.txt` file. A proxy can be set there too.
 - **"FFmpeg not found" in development:** run `npm run setup:ffmpeg`.
 - **Identify by sound says fpcalc is missing:** run `npm run setup:chromaprint`.
 - **The audio engine keeps stopping:** it restarts automatically up to three times in ten minutes. After that, check `main.log`.
