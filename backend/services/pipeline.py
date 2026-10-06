@@ -16,7 +16,8 @@ from config import load_preferences, settings
 from core.db import get_store
 from core.websocket_manager import manager as ws
 from services import (
-    audio_analysis, audio_profile, exporter, identify, library, local_media, name_cleanup, song_index, tracklist, youtube,
+    audio_analysis, audio_profile, exporter, identify, library, local_media, loudness, name_cleanup, song_index,
+    tracklist, youtube,
 )
 
 log = logging.getLogger(__name__)
@@ -350,18 +351,45 @@ async def _export(job_id: str) -> None:
             outputs: list[dict[str, Any]] = []
             await _update(job_id, status="exporting", progress=0, message="Saving songs", error=None, outputs=[])
 
+            # Pass 1 (only when needed): trim silent edges and measure loudness. The
+            # album's ReplayGain needs every song measured before any is tagged.
+            spans = [(t["start"], t["end"]) for t in chosen]
+            measured: list[dict[str, Any] | None] = [None] * len(chosen)
+            preparing = prefs.trim_silence or prefs.loudness != "off"
+            for n, track in enumerate(chosen if preparing else [], start=1):
+                _check_cancel(job_id)
+                src = sources[track["source_id"]]["path"]
+                await _update(
+                    job_id, progress=round(30 * (n - 1) / len(chosen), 1),
+                    message=f"Preparing {n} of {len(chosen)}: {track['title']}",
+                )
+                if prefs.trim_silence:
+                    spans[n - 1] = await asyncio.to_thread(loudness.trim_bounds, src, *spans[n - 1])
+                if prefs.loudness != "off":
+                    measured[n - 1] = await asyncio.to_thread(loudness.measure, src, *spans[n - 1])
+            album_lufs, album_peak = None, float("-inf")
+            if prefs.loudness == "tags":
+                songs = [(end - start, m) for (start, end), m in zip(spans, measured) if m]
+                album_lufs = loudness.album_loudness(songs)
+                album_peak = max((m["sample_peak_db"] for _, m in songs), default=float("-inf"))
+            saving_from = 30 if preparing else 0
+
             for n, track in enumerate(chosen, start=1):
                 _check_cancel(job_id)
                 source = sources[track["source_id"]]
                 rel = library.relative_path(track, n, collection, prefs)
                 dest = library.unique_path(os.path.join(root, f"{rel}.{prefs.audio_format}"))
                 await _update(
-                    job_id, progress=round(100 * (n - 1) / len(chosen), 1),
+                    job_id, progress=round(saving_from + (100 - saving_from) * (n - 1) / len(chosen), 1),
                     message=f"Saving {n} of {len(chosen)}: {track['title']}",
                 )
+                m = measured[n - 1]
+                gain = loudness.normalize_gain(m, prefs.loudness_target) if m and prefs.loudness == "normalize" else 0.0
+                replaygain = loudness.replaygain(m, album_lufs, album_peak) if m and prefs.loudness == "tags" else None
+                start, end = spans[n - 1]
                 await exporter.cut_track(
-                    source["path"], track["start"], track["end"], dest,
-                    prefs.audio_format, prefs.audio_bitrate, prefs.edge_fade_ms,
+                    source["path"], start, end, dest, prefs.audio_format, prefs.audio_bitrate, prefs.edge_fade_ms,
+                    gain_db=gain, fade_in_s=prefs.song_fade_in_s, fade_out_s=prefs.song_fade_out_s,
                 )
                 album_artist = collection.get("artist") or ""
                 await asyncio.to_thread(
@@ -375,6 +403,7 @@ async def _export(job_id: str) -> None:
                         "track": n, "total": len(chosen),
                     },
                     source.get("thumbnail"),
+                    replaygain,
                 )
                 outputs.append({"track_id": track["id"], "title": track["title"], "path": dest})
 

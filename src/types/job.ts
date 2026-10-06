@@ -84,6 +84,12 @@ export interface Preferences {
   audio_bitrate: number
   edge_fade_ms: number
   snap_window_s: number
+  trim_silence: boolean
+  song_fade_in_s: number
+  song_fade_out_s: number
+  /** "tags": ReplayGain tags, audio unchanged. "normalize": one fixed gain per song. */
+  loudness: 'off' | 'tags' | 'normalize'
+  loudness_target: number
   artist_template: string
   album_template: string
   collection_template: string

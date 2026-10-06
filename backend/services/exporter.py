@@ -7,6 +7,7 @@ import subprocess
 from typing import Any
 
 from core.ffmpeg_utils import get_ffmpeg_path
+from services import loudness
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -22,20 +23,26 @@ def codec_args(fmt: str, bitrate: int) -> list[str]:
 
 
 def build_cut_command(
-    src: str, start: float, end: float, dest: str, fmt: str, bitrate: int, fade_ms: int
+    src: str, start: float, end: float, dest: str, fmt: str, bitrate: int, fade_ms: int,
+    gain_db: float = 0.0, fade_in_s: float = 0.0, fade_out_s: float = 0.0,
 ) -> list[str]:
     """FFmpeg command for one song.
 
     `-ss` before `-i` seeks quickly, and because the audio is decoded and
     re-encoded the cut is still sample-accurate. A short fade at both edges
-    removes the click a hard cut would leave.
+    removes the click a hard cut would leave; `fade_in_s`/`fade_out_s` make
+    longer, audible fades. `gain_db` is one fixed volume change for the song.
     """
     duration = max(0.0, end - start)
-    fade = min(fade_ms / 1000.0, duration / 4)
+    fade_in = min(max(fade_ms / 1000.0, fade_in_s), duration / 4)
+    fade_out = min(max(fade_ms / 1000.0, fade_out_s), duration / 4)
     filters = []
-    if fade > 0:
-        filters.append(f"afade=t=in:st=0:d={fade:.3f}")
-        filters.append(f"afade=t=out:st={max(0.0, duration - fade):.3f}:d={fade:.3f}")
+    if abs(gain_db) >= 0.01:
+        filters.append(f"volume={gain_db:.2f}dB")
+    if fade_in > 0:
+        filters.append(f"afade=t=in:st=0:d={fade_in:.3f}")
+    if fade_out > 0:
+        filters.append(f"afade=t=out:st={max(0.0, duration - fade_out):.3f}:d={fade_out:.3f}")
     cmd = [
         get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y",
         "-ss", f"{start:.3f}", "-i", src, "-t", f"{duration:.3f}",
@@ -54,10 +61,13 @@ def build_cut_command(
     return cmd
 
 
-async def cut_track(src: str, start: float, end: float, dest: str, fmt: str, bitrate: int, fade_ms: int) -> None:
+async def cut_track(
+    src: str, start: float, end: float, dest: str, fmt: str, bitrate: int, fade_ms: int,
+    gain_db: float = 0.0, fade_in_s: float = 0.0, fade_out_s: float = 0.0,
+) -> None:
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".part"
-    cmd = build_cut_command(src, start, end, tmp, fmt, bitrate, fade_ms)
+    cmd = build_cut_command(src, start, end, tmp, fmt, bitrate, fade_ms, gain_db, fade_in_s, fade_out_s)
     proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, creationflags=_NO_WINDOW)
     if proc.returncode != 0:
         if os.path.exists(tmp):
@@ -66,8 +76,23 @@ async def cut_track(src: str, start: float, end: float, dest: str, fmt: str, bit
     os.replace(tmp, dest)
 
 
-def write_tags(path: str, fmt: str, tags: dict[str, Any], cover_path: str | None) -> None:
-    """Write title/artist/album/track/year and cover art with mutagen."""
+def _replaygain_text(rg: dict[str, Any]) -> dict[str, str]:
+    """ReplayGain tag values as text, keyed by lower-case tag name."""
+    text = {
+        "replaygain_track_gain": f"{rg['track_gain']:+.2f} dB",
+        "replaygain_track_peak": f"{rg['track_peak']:.6f}",
+    }
+    if "album_gain" in rg:
+        text["replaygain_album_gain"] = f"{rg['album_gain']:+.2f} dB"
+        text["replaygain_album_peak"] = f"{rg['album_peak']:.6f}"
+    return text
+
+
+def write_tags(
+    path: str, fmt: str, tags: dict[str, Any], cover_path: str | None, replaygain: dict[str, Any] | None = None
+) -> None:
+    """Write title/artist/album/track/year, cover art and ReplayGain values with mutagen."""
+    rg_text = _replaygain_text(replaygain) if replaygain else {}
     cover = None
     if cover_path and os.path.exists(cover_path):
         with open(cover_path, "rb") as f:
@@ -93,6 +118,11 @@ def write_tags(path: str, fmt: str, tags: dict[str, Any], cover_path: str | None
         id3.add(TRCK(encoding=3, text=track_no))
         if cover:
             id3.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover))
+        if rg_text:
+            from mutagen.id3 import TXXX
+
+            for key, value in rg_text.items():
+                id3.add(TXXX(encoding=3, desc=key.upper(), text=value))
         id3.save(path, v2_version=3)
         return
 
@@ -112,6 +142,8 @@ def write_tags(path: str, fmt: str, tags: dict[str, Any], cover_path: str | None
         mp4["trkn"] = [(tags["track"], tags["total"])]
         if cover:
             mp4["covr"] = [MP4Cover(cover, imageformat=MP4Cover.FORMAT_JPEG)]
+        for key, value in rg_text.items():
+            mp4[f"----:com.apple.iTunes:{key}"] = [value.encode("utf-8")]
         mp4.save()
         return
 
@@ -141,6 +173,13 @@ def write_tags(path: str, fmt: str, tags: dict[str, Any], cover_path: str | None
         audio["date"] = tags["year"]
     audio["tracknumber"] = str(tags["track"])
     audio["tracktotal"] = str(tags["total"])
+    for key, value in rg_text.items():
+        audio[key] = value
+    if fmt == "opus" and replaygain:
+        # Opus players read R128 gains (relative to -23 LUFS) rather than ReplayGain.
+        audio["R128_TRACK_GAIN"] = loudness.opus_r128_gain(replaygain["track_lufs"])
+        if "album_lufs" in replaygain:
+            audio["R128_ALBUM_GAIN"] = loudness.opus_r128_gain(replaygain["album_lufs"])
     if picture is not None:
         if fmt == "flac":
             audio.add_picture(picture)

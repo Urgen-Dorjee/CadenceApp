@@ -28,6 +28,19 @@ const FORMATS: { value: Preferences['audio_format']; label: string; note: string
   { value: 'flac', label: 'FLAC', note: 'Lossless, largest files' },
 ]
 
+const LOUDNESS: { value: Preferences['loudness']; label: string; note: string }[] = [
+  { value: 'off', label: 'Off', note: 'Songs keep their own volume' },
+  { value: 'tags', label: 'ReplayGain tags', note: 'Recommended. Players even out the volume; the audio is untouched' },
+  { value: 'normalize', label: 'Adjust volume', note: 'Changes each song to the same loudness' },
+]
+
+const LOUDNESS_TARGETS: { value: number; label: string }[] = [
+  { value: -14, label: '-14 LUFS (Spotify, YouTube)' },
+  { value: -16, label: '-16 LUFS (Apple Music)' },
+  { value: -18, label: '-18 LUFS (quieter, more headroom)' },
+  { value: -23, label: '-23 LUFS (broadcast)' },
+]
+
 const LAYOUT_TYPES: { type: CollectionType; label: string; example: { artist: string; album: string; name: string; year: string } }[] = [
   { type: 'artist', label: 'Singer collections', example: { artist: 'Udit Narayan', album: '', name: '', year: '' } },
   { type: 'album', label: 'Movie albums', example: { artist: '', album: 'Dilwale Dulhania Le Jayenge', name: '', year: '1995' } },
@@ -431,6 +444,41 @@ export default function SettingsPage() {
               <span className="text-[13px] tnum w-14 text-right">{prefs.snap_window_s === 0 ? 'Off' : `±${prefs.snap_window_s} s`}</span>
             </div>
           </Row>
+          <Row title="Trim silence" hint="Removes silence at the start and end of each song, keeping a 0.15 s pause." htmlFor="trim-silence">
+            <Switch id="trim-silence" checked={prefs.trim_silence} onChange={(v) => save({ trim_silence: v })} />
+          </Row>
+          <Row title="Fade in and out" hint="Audible fades at the start and end of each song. Useful when songs blend into each other." stack>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              {([
+                ['song-fade-in', 'In', 'song_fade_in_s'],
+                ['song-fade-out', 'Out', 'song_fade_out_s'],
+              ] as const).map(([id, label, key]) => (
+                <label key={id} htmlFor={id} className="flex items-center gap-3">
+                  <span className="text-[13px] text-muted w-7">{label}</span>
+                  <input id={id} type="range" min={0} max={5} step={0.5} value={prefs[key]}
+                    onChange={(e) => save({ [key]: Number(e.target.value) })} className="w-36 accent-[rgb(var(--accent))]" />
+                  <span className="text-[13px] tnum w-10 text-right">{prefs[key] === 0 ? 'Off' : `${prefs[key]} s`}</span>
+                </label>
+              ))}
+            </div>
+          </Row>
+          <Row title="Even out loudness" hint="Measured to the EBU R128 standard, so jukebox songs from different sources play at the same volume." stack>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2" role="radiogroup" aria-label="Even out loudness">
+              {LOUDNESS.map((l) => (
+                <Choice key={l.value} selected={prefs.loudness === l.value} onClick={() => save({ loudness: l.value })} title={l.label} note={l.note} />
+              ))}
+            </div>
+          </Row>
+          {prefs.loudness === 'normalize' && (
+            <Row title="Target loudness" hint="Peaks are never pushed above -1 dB, and nothing is compressed." htmlFor="loudness-target">
+              <select id="loudness-target" className="field w-72" value={prefs.loudness_target}
+                onChange={(e) => save({ loudness_target: Number(e.target.value) })}>
+                {LOUDNESS_TARGETS.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </Row>
+          )}
           <Row title="Edge fade" hint="A tiny fade at each cut removes clicks. 10 ms can't be heard." htmlFor="fade">
             <div className="flex items-center gap-3">
               <input id="fade" type="range" min={0} max={50} step={5} value={prefs.edge_fade_ms}

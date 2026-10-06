@@ -40,6 +40,7 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 - **Clean, exact cuts.** Each cut moves to the real gap between songs, is sample-accurate and gets a short fade so there's no click.
 - **Review before saving.** Waveform overview, per-cut close-ups, play any song, nudge cuts by 0.1 s, split at the playhead, join songs, include or skip songs.
 - **Proper tags.** Title, artist, album artist, album, year, track number and cover art in MP3, M4A (AAC), Opus or FLAC.
+- **Even loudness.** ReplayGain tags (audio untouched) or one fixed gain per song to a target loudness, measured to EBU R128. Silence at song edges is trimmed.
 - **Organised library.** Configurable folder layouts per collection type, and a built-in Library with search, cover art and a player.
 - **Optional naming helpers.** Identify songs by sound with AcoustID, or tidy messy names with AI.
 - **Resilient.** Jobs persist across restarts, the audio engine restarts itself if it crashes, and the app updates itself in the background.
@@ -113,6 +114,12 @@ Music/Cadence/
 ├── Collections/90s Romantic Hits/07 - ….mp3                             mixed collection
 └── Singles/….mp3
 ```
+
+Audio options (**Settings → Audio**):
+
+- **Trim silence:** removes silence at the start and end of each song, keeping a 0.15 s pause (on by default).
+- **Fade in and out:** audible fades of up to 5 s at song edges, useful when songs blend into each other.
+- **Even out loudness:** *ReplayGain tags* measures each song and the whole album (EBU R128) and writes ReplayGain tags (and R128 gains for Opus); players even out the volume and the audio is untouched. *Adjust volume* applies one fixed gain per song to reach −14, −16, −18 or −23 LUFS, never pushing peaks above −1 dBTP and never compressing.
 
 Saving options (**Settings → Saving songs**):
 

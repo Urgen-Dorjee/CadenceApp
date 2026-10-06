@@ -83,6 +83,15 @@ class Preferences(BaseModel):
     audio_bitrate: int = 320
     # Fade applied at each cut edge to remove clicks, in milliseconds.
     edge_fade_ms: int = 10
+    # Remove silence at the start and end of each saved song (a short pad is kept).
+    trim_silence: bool = True
+    # Longer fades at the start and end of each saved song, in seconds (0 = off).
+    song_fade_in_s: float = 0.0
+    song_fade_out_s: float = 0.0
+    # Even out loudness: "off", "tags" (ReplayGain tags, audio unchanged) or
+    # "normalize" (one fixed gain per song to reach loudness_target).
+    loudness: str = "off"
+    loudness_target: float = -14.0
     # How far a cut may move to land on the gap between songs, in seconds.
     # Tracklist timestamps are often 3-4 s off, so this needs room.
     snap_window_s: float = 5.0
