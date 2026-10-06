@@ -20,6 +20,7 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 - [How it finds the songs](#how-it-finds-the-songs)
 - [Naming songs](#naming-songs)
 - [Where songs go](#where-songs-go)
+- [Library](#library)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
 - [Scripts](#scripts)
@@ -137,6 +138,12 @@ Saving options (**Settings → Saving songs**):
 - **Disk space:** keep or delete downloaded audio after saving, and see and clear what's kept.
 
 Cadence never overwrites a file it didn't save. A clash becomes `Song (2).mp3`. When you save a split again, you can **replace** the songs it saved last time (anything no longer in the split goes to the Recycle Bin) or **keep both**.
+
+## Library
+
+The Library lists every saved song, and any audio already in your library folder, by album, singer or song, with cover art, search and a built-in player. It rescans at startup to pick up files added, changed or deleted outside Cadence.
+
+Click the pencil on a song to fix its title, singer, album, year or track number, or **Edit all** on an album or singer to change every song there at once. Only the tags you change are rewritten; cover art and ReplayGain values are kept.
 
 ## Tech stack
 
