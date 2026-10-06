@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles } from 'lucide-react'
+import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { useJobsStore } from '../stores/jobsStore'
@@ -18,6 +18,7 @@ import WaveformOverview from '../components/review/WaveformOverview'
 import CutCloseUp from '../components/review/CutCloseUp'
 import TrackRow from '../components/review/TrackRow'
 import CollectionPanel from '../components/review/CollectionPanel'
+import TracklistDialog from '../components/review/TracklistDialog'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
 
@@ -26,6 +27,7 @@ export default function ReviewPage() {
   const navigate = useNavigate()
   const [identifying, setIdentifying] = useState(false)
   const [tidying, setTidying] = useState(false)
+  const [tracklistOpen, setTracklistOpen] = useState(false)
   const job = useJobsStore((s) => s.jobs[id])
   const loaded = useJobsStore((s) => s.loaded)
   const player = useAudioPlayer(id)
@@ -257,6 +259,37 @@ export default function ReviewPage() {
     }
   }
 
+  /** Replace the songs with a pasted tracklist. Throws so the dialog can show what's wrong. */
+  const importTracklist = async (text: string) => {
+    const before = { tracks, collection, dirty }
+    const result = await api.importTracklist(id, text)
+    if (player.playing && tracks[0]) player.toggle(tracks[0].source_id)
+    setTracks(result.tracks)
+    setCollection((c) => ({ ...c, ...result.collection }))
+    setSelectedId(null)
+    setDirty(true)
+    const count = result.tracks.length
+    toast.success(
+      (t) => (
+        <span className="flex items-center gap-3">
+          {count} song{count === 1 ? '' : 's'} from your tracklist{result.snapped ? ', cuts moved to the gaps' : ''}
+          <button
+            className="text-accent font-medium hover:underline"
+            onClick={() => {
+              setTracks(before.tracks)
+              setCollection(before.collection)
+              setDirty(before.dirty)
+              toast.dismiss(t.id)
+            }}
+          >
+            Undo
+          </button>
+        </span>
+      ),
+      { duration: 8000 },
+    )
+  }
+
   const save = async () => {
     setBusy(true)
     try {
@@ -418,6 +451,16 @@ export default function ReviewPage() {
             </button>
             <span className="font-mono text-sm tnum text-muted w-24">{formatTime(player.time)}</span>
             <div className="flex-1" />
+            {singleSource && (
+              <button
+                className="btn-secondary h-8"
+                onClick={() => setTracklistOpen(true)}
+                disabled={exporting}
+                title="Paste a tracklist or open a .cue file"
+              >
+                <ListMusic size={14} aria-hidden="true" /> Tracklist
+              </button>
+            )}
             <button
               className="btn-secondary h-8"
               onClick={tidyNames}
@@ -541,6 +584,7 @@ export default function ReviewPage() {
               </tbody>
             </table>
           </div>
+          <TracklistDialog open={tracklistOpen} onOpenChange={setTracklistOpen} onImport={importTracklist} />
           <p className="text-xs text-faint">
             Space plays or pauses. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s). Songs that share a cut move together.
           </p>

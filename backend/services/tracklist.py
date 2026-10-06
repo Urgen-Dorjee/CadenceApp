@@ -14,6 +14,7 @@ CONFIDENCE = {
     "comment": 0.8,
     "playlist": 1.0,
     "single": 1.0,
+    "pasted": 0.95,
 }
 
 _TS = r"(?<![\d:])(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?![\d:])"
@@ -59,12 +60,11 @@ def clean_title(title: str) -> str:
     return t.strip(_EDGE_PUNCT) or title.strip()
 
 
-def parse_timestamps(text: str, duration: float | None = None) -> list[tuple[float, str]]:
-    """Parse a timestamped tracklist out of free text.
+def timestamp_lines(text: str) -> list[tuple[float, str]]:
+    """(seconds, title) for every line with one time (or a range of two). Unvalidated.
 
     Handles "00:00 Song", "Song - 3:45", "1. Song 1:02:03", "[04:12] Song" and
-    ranges like "00:00 - 04:12 Song". Returns [] unless the timestamps look like
-    a real tracklist: at least two entries, strictly increasing, inside the video.
+    ranges like "00:00 - 04:12 Song" (the first time is kept).
     """
     entries: list[tuple[float, str]] = []
     for raw_line in text.splitlines():
@@ -80,7 +80,16 @@ def parse_timestamps(text: str, duration: float | None = None) -> list[tuple[flo
         title = re.sub(r"\s*[-–—|]\s*[-–—|]\s*", " - ", title)  # "a - - b" left by a removed range
         title = clean_title(title.strip(_EDGE_PUNCT))
         entries.append((float(start), title))
+    return entries
 
+
+def parse_timestamps(text: str, duration: float | None = None) -> list[tuple[float, str]]:
+    """Parse a timestamped tracklist out of free text (see `timestamp_lines`).
+
+    Returns [] unless the timestamps look like a real tracklist: at least two
+    entries, strictly increasing, inside the video.
+    """
+    entries = timestamp_lines(text)
     if len(entries) < 2:
         return []
     starts = [s for s, _ in entries]
@@ -147,6 +156,108 @@ def tracks_from_chapters(chapters: list[dict[str, Any]] | None, duration: float,
         tracks.append(
             make_track(title=title, start=float(ch.get("start_time") or 0), end=float(end), origin="chapters", source_id=source_id)
         )
+    return tracks
+
+
+# --- Tracklists pasted or imported by the user ------------------------------------
+#
+# Unlike tracklists found in a description, these are trusted: the user chose them.
+# Three forms are accepted:
+#   start times   "0:00 Song A" / "4:12 Song B"
+#   song lengths  "1. Song A 4:12" / "2. Song B 3:58" (times that add up to the video)
+#   a cue sheet   TRACK 01 AUDIO / TITLE "Song A" / INDEX 01 00:00:00
+
+
+class TracklistError(ValueError):
+    """The text can't be used as a tracklist. The message is shown to the user."""
+
+
+_CUE_TRACK_RE = re.compile(r"^\s*TRACK\s+\d+\s+AUDIO\b", re.IGNORECASE | re.MULTILINE)
+_CUE_INDEX_RE = re.compile(r"^\s*INDEX\s+01\s+(\d+):(\d{1,2}):(\d{1,2})\s*$", re.IGNORECASE)
+_CUE_FIELD_RE = re.compile(r'^\s*(TITLE|PERFORMER)\s+(?:"(.*)"|(\S.*?))\s*$', re.IGNORECASE)
+_CUE_YEAR_RE = re.compile(r'^\s*REM\s+DATE\s+"?((?:19|20)\d{2})', re.IGNORECASE)
+CUE_FRAMES_PER_SECOND = 75
+
+
+def parse_cue(text: str) -> dict[str, Any]:
+    """Album details and (start, title, performer) entries from a cue sheet."""
+    album = {"album": "", "artist": "", "year": ""}
+    entries: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for line in text.splitlines():
+        if _CUE_TRACK_RE.match(line):
+            current = {"start": None, "title": "", "artist": ""}
+            entries.append(current)
+            continue
+        if m := _CUE_YEAR_RE.match(line):
+            album["year"] = m.group(1)
+        elif m := _CUE_FIELD_RE.match(line):
+            key = "title" if m.group(1).upper() == "TITLE" else "artist"
+            value = (m.group(2) if m.group(2) is not None else m.group(3)).strip()
+            if current is not None:
+                current[key] = value
+            else:
+                album["album" if key == "title" else "artist"] = value
+        elif (m := _CUE_INDEX_RE.match(line)) and current is not None:
+            minutes, seconds, frames = (int(g) for g in m.groups())
+            current["start"] = minutes * 60 + seconds + frames / CUE_FRAMES_PER_SECOND
+    entries = [e for e in entries if e["start"] is not None]
+    if not entries:
+        raise TracklistError("This cue sheet has no INDEX 01 times.")
+    return {**album, "format": "cue", "entries": entries}
+
+
+def parse_pasted(text: str, duration: float) -> dict[str, Any]:
+    """Read a tracklist the user pasted or opened. Raises TracklistError if it can't be used.
+
+    Returns {"format", "album", "artist", "year", "entries": [{start, title, artist}]}.
+    """
+    if _CUE_TRACK_RE.search(text):
+        parsed = parse_cue(text)
+    else:
+        lines = timestamp_lines(text)
+        if not lines:
+            raise TracklistError("No times found. Put one song per line with its start time, like \"4:12 Song name\".")
+        values = [t for t, _ in lines]
+        increasing = all(b > a for a, b in zip(values, values[1:]))
+        total = sum(values)
+        adds_up = bool(duration) and abs(total - duration) <= max(15.0, duration * 0.03)
+        if not increasing or (values[0] > 0 and adds_up):
+            # Song lengths, not start times: each song starts where the last one ended.
+            if any(v <= 0 for v in values):
+                raise TracklistError("A song can't be 0:00 long. Check the times.")
+            starts = [sum(values[:i]) for i in range(len(values))]
+            fmt = "lengths"
+        else:
+            starts, fmt = values, "starts"
+        parsed = {
+            "format": fmt, "album": "", "artist": "", "year": "",
+            "entries": [{"start": s, "title": title, "artist": ""} for s, (_, title) in zip(starts, lines)],
+        }
+
+    starts = [e["start"] for e in parsed["entries"]]
+    if any(b <= a for a, b in zip(starts, starts[1:])):
+        raise TracklistError("The start times must go up from one song to the next.")
+    if duration and starts[-1] >= duration:
+        raise TracklistError(
+            f"The last song starts at {format_ts(starts[-1])}, after the video ends ({format_ts(duration)}). Check the times."
+        )
+    return parsed
+
+
+def tracks_from_pasted(parsed: dict[str, Any], duration: float, source_id: str) -> list[dict[str, Any]]:
+    entries = parsed["entries"]
+    tracks = []
+    for i, entry in enumerate(entries):
+        end = entries[i + 1]["start"] if i + 1 < len(entries) else duration
+        tracks.append(make_track(
+            title=entry["title"] or f"Track {i + 1}",
+            artist=entry["artist"],
+            start=0.0 if i == 0 and entry["start"] <= 15 else entry["start"],
+            end=end,
+            origin="pasted",
+            source_id=source_id,
+        ))
     return tracks
 
 

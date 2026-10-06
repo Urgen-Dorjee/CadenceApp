@@ -91,6 +91,12 @@ export const api = {
   identifyJob: (id: string, payload: ReviewPayload) => request<{ tracks: Track[]; named: number }>('POST', `/api/jobs/${id}/identify`, payload),
   tidyNames: (id: string, payload: ReviewPayload) =>
     request<{ tracks: Track[]; collection: Collection; changed: number }>('POST', `/api/jobs/${id}/tidy-names`, payload),
+  importTracklist: (id: string, text: string) =>
+    request<{ tracks: Track[]; collection: Partial<Collection>; format: 'starts' | 'lengths' | 'cue'; snapped: boolean }>(
+      'POST',
+      `/api/jobs/${id}/tracklist`,
+      { text },
+    ),
   retryJob: (id: string) => request<Job>('POST', `/api/jobs/${id}/retry`),
   cancelJob: (id: string) => request<{ status: string }>('POST', `/api/jobs/${id}/cancel`),
   deleteJob: (id: string) => request<{ status: string }>('DELETE', `/api/jobs/${id}`),

@@ -94,3 +94,39 @@ def test_cut_encode_and_tag(jukebox, tmp_path, fmt):
     assert audio is not None
     title = audio.get("title") or audio.get("\xa9nam")
     assert title[0] == "Test Song"
+
+
+def test_pasted_tracklist_snaps_to_the_real_gaps(jukebox):
+    """Gaps are at 100.0-101.5 s and 196.5-198.0 s; the pasted times are about 3 s off."""
+    from fastapi.testclient import TestClient
+
+    from config import settings
+    from core.db import get_store
+    from main import app
+
+    store = get_store()
+    job = store.create("https://www.youtube.com/watch?v=j")
+    store.update(job["id"], status="review", sources=[{"id": "s", "path": jukebox, "duration": _duration(jukebox)}])
+    headers = {"host": f"127.0.0.1:{settings.backend_port}", "x-cadence-token": "test-token"}
+    with TestClient(app, base_url=f"http://127.0.0.1:{settings.backend_port}") as client:
+        r = client.post(f"/api/jobs/{job['id']}/tracklist", json={"text": "0:00 A\n1:44 B\n3:15 C"}, headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["snapped"] is True
+    a, b, c = body["tracks"]
+    assert 100.0 <= b["start"] <= 101.5 and a["end"] == b["start"]
+    assert 196.5 <= c["start"] <= 198.0 and b["end"] == c["start"]
+
+
+def test_drifting_timestamps_still_find_the_gaps(jukebox):
+    """Timestamps 7-8 s late, beyond the ±5 s window: the wide search and drift tracking find both gaps."""
+    duration = _duration(jukebox)
+    tracks = [
+        make_track(title="A", start=0, end=108, origin="chapters", source_id="s"),
+        make_track(title="B", start=108, end=205, origin="chapters", source_id="s"),
+        make_track(title="C", start=205, end=duration, origin="chapters", source_id="s"),
+    ]
+    asyncio.run(audio_analysis.refine_boundaries(tracks, jukebox, duration, window=5.0))
+    assert 100.0 <= tracks[1]["start"] <= 101.5
+    assert 196.5 <= tracks[2]["start"] <= 198.0
+    assert all(t["confidence"] >= 0.9 for t in tracks)

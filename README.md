@@ -55,14 +55,28 @@ Cadence trusts the most reliable source it can find, in this order:
 | Description timestamps | `00:00 Song name`, `1. Song - 3:45`, `[04:12] Song`, ranges | High |
 | Top comments | The comment with the most timestamps | Medium |
 | Audio gaps | Quiet stretches in the waveform, longest first, songs at least 90 s long | Lower, flagged for review |
+| Your own tracklist | Pasted on the review screen, or a `.cue` file | High |
 
 Timestamps are whole seconds and are often a few seconds off, so every cut then moves to where one song really ends and the next begins, within ±5 s (configurable in **Settings → Audio**):
 
 - **Songs separated by a gap:** the cut goes in the middle of the silence. Short dips between notes or drum hits (under 150 ms) are ignored, so a cut can't land inside the end of a song.
 - **Crossfaded songs (no gap):** the cut goes to the quietest point of the crossfade.
 - If several gaps are in range, the one nearest the timestamp wins.
+- **Drifting timestamps:** tracklists often fall further behind the audio as a video goes on (10 s or more by the end). Each cut that lands in a gap measures that drift, and the next cut is searched with it taken into account. If no gap is in range, a wider search (±15 s) accepts only a clear gap; failing that, the cut is marked **Check**.
 
 The audio is then decoded and cut at exactly that point (accurate to about 1 ms), with a 10 ms fade so there's no click. Neighbouring songs share one cut point, so there's never a gap or an overlap.
+
+### Your own tracklist
+
+If YouTube has no tracklist, or a wrong one, click **Tracklist** on the review screen and paste one, one song per line:
+
+```
+0:00 Tujhe Dekha To
+5:03 Mere Khwabon Mein
+10:21 Ho Gaya Hai Tujhko
+```
+
+Start times (`0:00 Song`) and song lengths (`1. Song 4:12`, added up) are both understood, or open a `.cue` file, which also brings singers, album and year. Cuts are still moved to the real gaps, and the change can be undone.
 
 Nothing is saved until you review the result. Uncertain cuts and segments too short to be a song are flagged.
 

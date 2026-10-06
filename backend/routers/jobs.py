@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
 from config import load_preferences
-from services import audio_profile, identify, name_cleanup, pipeline
+from services import audio_analysis, audio_profile, identify, name_cleanup, pipeline, tracklist
 
 router = APIRouter()
 
@@ -65,6 +65,10 @@ class ReviewIn(BaseModel):
         if v and not os.path.isabs(v):
             raise ValueError("Choose a full folder path to save into.")
         return v
+
+
+class TracklistIn(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
 
 
 def _get_job(job_id: str) -> dict:
@@ -162,6 +166,34 @@ async def tidy_names(job_id: str, body: ReviewIn):
     new_tracks, new_collection = name_cleanup.apply_suggestions(tracks, collection, suggestion)
     changed = sum(1 for a, b in zip(tracks, new_tracks) if a["title"] != b["title"] or a["artist"] != b["artist"])
     return {"tracks": new_tracks, "collection": new_collection, "changed": changed}
+
+
+@router.post("/jobs/{job_id}/tracklist")
+async def import_tracklist(job_id: str, body: TracklistIn):
+    """Songs from a tracklist the user pasted or opened (.cue). Returns them; nothing is saved.
+
+    Cuts are snapped to the real gap between songs, like a tracklist found on YouTube.
+    """
+    job = _get_job(job_id)
+    if job["status"] in ACTIVE_STATES:
+        raise HTTPException(status_code=409, detail="Wait for the job to finish before changing its songs")
+    if len(job["sources"]) != 1:
+        raise HTTPException(status_code=422, detail="A tracklist can only be used for a single video, not a playlist.")
+    source = job["sources"][0]
+    duration = float(source.get("duration") or 0)
+    try:
+        parsed = tracklist.parse_pasted(body.text, duration)
+    except tracklist.TracklistError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    tracks = tracklist.tracks_from_pasted(parsed, duration, source["id"])
+    snapped = bool(source.get("path")) and os.path.isfile(source["path"])
+    if snapped:
+        await audio_analysis.refine_boundaries(tracks, source["path"], duration, load_preferences().snap_window_s)
+    tracklist.flag_short_tracks(tracks)
+    collection: dict = {k: parsed[k] for k in ("artist", "album", "year") if parsed[k]}
+    if parsed["album"]:
+        collection["name"] = parsed["album"]
+    return {"tracks": tracks, "collection": collection, "format": parsed["format"], "snapped": snapped}
 
 
 @router.post("/jobs/{job_id}/retry")

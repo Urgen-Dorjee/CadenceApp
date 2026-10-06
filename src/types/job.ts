@@ -9,7 +9,7 @@ export type JobStatus =
   | 'failed'
   | 'cancelled'
 
-export type TrackOrigin = 'chapters' | 'description' | 'comment' | 'silence' | 'playlist' | 'single' | 'manual'
+export type TrackOrigin = 'chapters' | 'description' | 'comment' | 'silence' | 'playlist' | 'single' | 'manual' | 'pasted'
 
 export interface Track {
   id: string

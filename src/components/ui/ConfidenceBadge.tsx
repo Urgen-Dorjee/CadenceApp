@@ -9,6 +9,7 @@ const ORIGIN_LABEL: Record<TrackOrigin, string> = {
   playlist: 'Playlist video',
   single: 'Whole video',
   manual: 'Edited by you',
+  pasted: 'From your tracklist',
 }
 
 export default function ConfidenceBadge({ confidence, origin }: { confidence: number; origin: TrackOrigin }) {
