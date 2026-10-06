@@ -279,21 +279,20 @@ This packages a standalone Python runtime with only the dependencies in `backend
 
 Installed copies check for updates every six hours, download them in the background and show **Restart to update**. Updates are published to this repository's [Releases](https://github.com/Urgen-Dorjee/CadenceApp/releases) (configured under `build.publish` in `package.json`).
 
-1. Bump `version` in `package.json` and commit.
-2. Create a GitHub token with **Contents: read and write** on `CadenceApp`.
-3. Publish:
+**Automatically (recommended):**
 
-   ```powershell
-   $env:GH_TOKEN = "<token>"
-   npm run release
-   ```
+1. Bump `version` in `package.json` (for example `npm version 2.1.0 --no-git-tag-version`) and commit.
+2. Tag and push: `git tag v2.1.0 && git push origin master v2.1.0`.
 
-   This uploads the installer and `latest.yml`, which is the update feed.
-4. Tag the source: `git tag v<version> && git push --tags`.
+The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, runs all tests, builds the installer and publishes it with `latest.yml` (the update feed). It uses the repository's built-in token, so no secrets are needed.
+
+**By hand:** set `GH_TOKEN` to a GitHub token with **Contents: read and write** on this repository, then run `npm run release`.
+
+Every push and pull request also runs the **CI** workflow: type check, frontend tests and backend tests with real FFmpeg.
 
 ### Code signing (optional)
 
-Unsigned installers work, but Windows SmartScreen shows "Windows protected your PC" until the download builds a reputation. To sign, get an OV/EV code-signing certificate or use Azure Trusted Signing. For a `.pfx` file, set `CSC_LINK` (path or base64) and `CSC_KEY_PASSWORD` before building, and electron-builder will sign automatically.
+Unsigned installers work, but Windows SmartScreen shows "Windows protected your PC" until the download builds a reputation. To sign, get an OV/EV code-signing certificate or use Azure Trusted Signing. For a `.pfx` file, set `CSC_LINK` (path or base64) and `CSC_KEY_PASSWORD` before building, or add them as repository secrets for the Release workflow, and electron-builder will sign automatically.
 
 ## Data, logs and troubleshooting
 
