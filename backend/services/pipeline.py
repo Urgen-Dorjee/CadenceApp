@@ -16,7 +16,7 @@ from config import load_preferences, settings
 from core.db import get_store
 from core.websocket_manager import manager as ws
 from services import (
-    audio_analysis, audio_profile, exporter, identify, library, local_media, loudness, name_cleanup, playlist,
+    audio_analysis, audio_profile, cover, exporter, identify, library, local_media, loudness, name_cleanup, playlist,
     song_index,
     tracklist, youtube,
 )
@@ -388,6 +388,20 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                     spans[n - 1] = await asyncio.to_thread(loudness.trim_bounds, src, *spans[n - 1])
                 if prefs.loudness != "off":
                     measured[n - 1] = await asyncio.to_thread(loudness.measure, src, *spans[n - 1])
+            covers: dict[str, str | None] = {}
+
+            async def cover_for(source: dict[str, Any]) -> str | None:
+                """The split's own cover if the user chose one, else the video's thumbnail (square if wanted)."""
+                if job.get("cover") and os.path.isfile(job["cover"]):
+                    return job["cover"]
+                if source["id"] not in covers:
+                    thumb = source.get("thumbnail")
+                    if thumb and os.path.isfile(thumb) and prefs.square_cover:
+                        out = os.path.join(job_dir(job_id), f"cover-square-{source['id']}.jpg")
+                        thumb = await asyncio.to_thread(cover.square, thumb, out)
+                    covers[source["id"]] = thumb
+                return covers[source["id"]]
+
             album_lufs, album_peak = None, float("-inf")
             if prefs.loudness == "tags":
                 songs = [(end - start, m) for (start, end), m in zip(spans, measured) if m]
@@ -425,7 +439,7 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                         "year": collection.get("year") or "",
                         "track": n, "total": len(chosen),
                     },
-                    source.get("thumbnail"),
+                    await cover_for(source),
                     replaygain,
                 )
                 outputs.append({"track_id": track["id"], "title": track["title"], "path": dest})

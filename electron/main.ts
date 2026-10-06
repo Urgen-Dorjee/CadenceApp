@@ -178,6 +178,17 @@ function registerIpcHandlers() {
     return result.canceled ? [] : result.filePaths
   })
 
+  ipcMain.handle('dialog:openImage', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a cover image',
+      buttonLabel: 'Use as cover',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
   // Theme: 'system' | 'dark' | 'light'. Returns whether the app should render dark.
   ipcMain.handle('theme:set', (_event, theme: string) => {
     nativeTheme.themeSource = theme === 'dark' || theme === 'light' ? theme : 'system'

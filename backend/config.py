@@ -70,6 +70,8 @@ class Preferences(BaseModel):
     save_mode: str = "library"
     # Show the saved songs in Explorer when saving finishes.
     open_when_done: bool = True
+    # Crop wide video thumbnails to a square cover, like an album's.
+    square_cover: bool = True
     # Write an .m3u8 playlist next to the songs of each album or collection.
     write_playlist: bool = True
     # Keep downloaded source audio after saving, so a split can be saved again.

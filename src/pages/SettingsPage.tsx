@@ -329,6 +329,13 @@ export default function SettingsPage() {
             <Switch id="keep-downloads" checked={prefs.keep_downloads} onChange={(v) => save({ keep_downloads: v })} />
           </Row>
           <Row
+            title="Square cover art"
+            hint="Crops wide video thumbnails to a square, like an album cover. A cover you choose yourself is used as it is."
+            htmlFor="square-cover"
+          >
+            <Switch id="square-cover" checked={prefs.square_cover} onChange={(v) => save({ square_cover: v })} />
+          </Row>
+          <Row
             title="Playlist file"
             hint="Writes an .m3u8 playlist next to each album or collection, so other players and phones keep the song order."
             htmlFor="write-playlist"

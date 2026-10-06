@@ -100,6 +100,8 @@ export const api = {
       `/api/jobs/${id}/tracklist`,
       { text },
     ),
+  setCover: (id: string, path: string) => request<Job>('POST', `/api/jobs/${id}/cover`, { path }),
+  resetCover: (id: string) => request<Job>('DELETE', `/api/jobs/${id}/cover`),
   retryJob: (id: string) => request<Job>('POST', `/api/jobs/${id}/retry`),
   cancelJob: (id: string) => request<{ status: string }>('POST', `/api/jobs/${id}/cancel`),
   deleteJob: (id: string) => request<{ status: string }>('DELETE', `/api/jobs/${id}`),

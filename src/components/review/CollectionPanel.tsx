@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { FolderOutput } from 'lucide-react'
+import { FolderOutput, ImageIcon } from 'lucide-react'
 import type { Collection, CollectionType } from '../../types/job'
 
 const TYPES: { value: CollectionType; label: string; hint: string }[] = [
@@ -20,10 +20,20 @@ interface Props {
   askOnSave: boolean
   onChooseFolder: () => void
   onResetFolder: () => void
+  /** Cover shown on the saved songs (the video thumbnail or the user's own image). */
+  coverUrl: string | null
+  customCover: boolean
+  /** Settings crop video thumbnails to a square. */
+  squareCover: boolean
+  onChangeCover: () => void
+  onResetCover: () => void
   disabled: boolean
 }
 
-export default function CollectionPanel({ collection, onChange, destination, customFolder, askOnSave, onChooseFolder, onResetFolder, disabled }: Props) {
+export default function CollectionPanel({
+  collection, onChange, destination, customFolder, askOnSave, onChooseFolder, onResetFolder,
+  coverUrl, customCover, squareCover, onChangeCover, onResetCover, disabled,
+}: Props) {
   const setType = (type: CollectionType) => {
     // Carry the name across so switching type doesn't lose what was typed.
     const name = collection.artist || collection.album || collection.name
@@ -121,6 +131,38 @@ export default function CollectionPanel({ collection, onChange, destination, cus
         )}
         <button type="button" className="btn-secondary h-7 px-2.5" onClick={onChooseFolder} disabled={disabled}>
           Change folder
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3 rounded-md bg-sunken border border-line px-3 py-2">
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt="Cover"
+            className={clsx('h-10 rounded-sm shrink-0 object-cover bg-raised', squareCover || customCover ? 'w-10' : 'w-[71px]')}
+          />
+        ) : (
+          <span className="w-10 h-10 rounded-sm bg-raised flex items-center justify-center text-faint shrink-0" aria-hidden="true">
+            <ImageIcon size={16} />
+          </span>
+        )}
+        <div className="flex-1 min-w-0 text-xs">
+          <p className="text-muted">Cover art</p>
+          <p className="text-ink">
+            {customCover
+              ? 'Your own image'
+              : coverUrl
+                ? squareCover ? "The video's thumbnail, cropped square" : "The video's thumbnail"
+                : 'No cover'}
+          </p>
+        </div>
+        {customCover && (
+          <button type="button" className="btn-ghost h-7 px-2" onClick={onResetCover} disabled={disabled}>
+            Use the video's
+          </button>
+        )}
+        <button type="button" className="btn-secondary h-7 px-2.5" onClick={onChangeCover} disabled={disabled}>
+          Change cover…
         </button>
       </div>
     </section>

@@ -274,6 +274,18 @@ export default function ReviewPage() {
     if (picked) setFolder(picked)
   }
 
+  const changeCover = async () => {
+    const path = await window.electronAPI?.selectImage()
+    if (!path) return
+    try {
+      useJobsStore.getState().upsert(await api.setCover(id, path))
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+  const resetCover = () =>
+    api.resetCover(id).then(useJobsStore.getState().upsert).catch((e: Error) => toast.error(e.message))
+
   const payload = (destinationOverride?: string) => ({ tracks, collection, destination: destinationOverride ?? folder })
 
   const unnamedCount = tracks.filter((t) => t.include && needsName(t)).length
@@ -531,6 +543,11 @@ export default function ReviewPage() {
           askOnSave={askOnSave}
           onChooseFolder={chooseFolder}
           onResetFolder={() => setFolder('')}
+          coverUrl={job.thumbnail ? api.thumbnailUrl(job.id, job.updated_at) : null}
+          customCover={Boolean(job.cover)}
+          squareCover={prefs?.square_cover ?? true}
+          onChangeCover={changeCover}
+          onResetCover={resetCover}
           disabled={exporting}
         />
 

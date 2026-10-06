@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
 from config import load_preferences
-from services import audio_analysis, audio_profile, identify, local_media, name_cleanup, pipeline, tracklist
+from services import audio_analysis, audio_profile, cover, identify, local_media, name_cleanup, pipeline, tracklist
 
 router = APIRouter()
 
@@ -90,6 +90,10 @@ class ReviewIn(BaseModel):
         if v and not os.path.isabs(v):
             raise ValueError("Choose a full folder path to save into.")
         return v
+
+
+class CoverIn(BaseModel):
+    path: str = Field(min_length=1, max_length=1000)
 
 
 class TracklistIn(BaseModel):
@@ -224,6 +228,35 @@ async def import_tracklist(job_id: str, body: TracklistIn):
     if parsed["album"]:
         collection["name"] = parsed["album"]
     return {"tracks": tracks, "collection": collection, "format": parsed["format"], "snapped": snapped}
+
+
+@router.post("/jobs/{job_id}/cover")
+async def set_cover(job_id: str, body: CoverIn):
+    """Use the user's own image as the cover of every song in this split."""
+    job = _get_job(job_id)
+    if job["status"] in ACTIVE_STATES:
+        raise HTTPException(status_code=409, detail="Wait for the job to finish before changing its cover")
+    if not os.path.isabs(body.path):
+        raise HTTPException(status_code=422, detail="Choose an image file.")
+    try:
+        path = await asyncio.to_thread(cover.import_image, body.path, pipeline.job_dir(job_id))
+    except cover.CoverError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    job = get_store().update(job_id, cover=path, thumbnail=path)
+    await ws.send_job(job)
+    return job
+
+
+@router.delete("/jobs/{job_id}/cover")
+async def reset_cover(job_id: str):
+    """Go back to the video's thumbnail."""
+    job = _get_job(job_id)
+    if job.get("cover") and os.path.isfile(job["cover"]):
+        await asyncio.to_thread(os.remove, job["cover"])
+    thumbnail = next((s.get("thumbnail") for s in job["sources"] if s.get("thumbnail")), None)
+    job = get_store().update(job_id, cover="", thumbnail=thumbnail)
+    await ws.send_job(job)
+    return job
 
 
 @router.post("/jobs/{job_id}/retry")

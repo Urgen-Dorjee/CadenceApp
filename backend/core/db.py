@@ -42,6 +42,8 @@ _ADDED_COLUMNS = {
     "destination": "TEXT NOT NULL DEFAULT ''",
     # The .m3u8 playlist written by the last save, so saving again can replace it.
     "playlist": "TEXT NOT NULL DEFAULT ''",
+    # Cover image the user chose for this split (in its work folder); empty means the video's.
+    "cover": "TEXT NOT NULL DEFAULT ''",
 }
 
 

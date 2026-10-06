@@ -8,6 +8,7 @@ const prefs: Preferences = {
   open_when_done: true,
   keep_downloads: true,
   write_playlist: true,
+  square_cover: true,
   identify_songs: false,
   acoustid_key: '',
   tidy_names: false,
