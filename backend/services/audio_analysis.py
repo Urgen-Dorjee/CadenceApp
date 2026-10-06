@@ -190,6 +190,14 @@ def tracks_from_profile(profile: AudioProfile, source_id: str) -> list[dict[str,
 #
 # Nearby candidates are preferred, so a cut never jumps to a pause inside a song
 # when a real gap is closer to the timestamp.
+#
+# Timestamps often drift: a tracklist made from an edited video can fall 10 s or
+# more behind the audio by its end. Each cut that lands in a gap tells us the
+# current drift, and the next cut is searched from its own timestamp to its
+# timestamp plus that drift (preferring the latter), so both a drifting list and
+# one that is only randomly off are covered.
+# When there is still no gap in range, a wider search accepts only a clear gap;
+# failing that, the crossfade cut is kept and flagged for review.
 
 SNAP_HOP_S = 0.01          # loudness measured every 10 ms...
 SNAP_FRAME_S = 0.03        # ...over 30 ms
@@ -199,6 +207,10 @@ GAP_MIN_S = 0.15
 DEEPEST_WITHIN_DB = 3.0    # cut in the part of the gap within 3 dB of its quietest point
 SILENCE_FLOOR_DB = -70.0   # below this everything counts as equally silent
 CROSSFADE_SMOOTH_S = 0.4
+WIDE_SEARCH_S = 15.0       # second, wider search when no gap is within the normal window...
+WIDE_GAP_MIN_S = 0.4       # ...which only accepts a clear gap
+MAX_DRIFT_S = 30.0
+UNSURE_CONFIDENCE = 0.6    # crossfade cut with no gap found: shown as "Check"
 
 
 def _loudness_db(samples: np.ndarray, rate: int) -> tuple[np.ndarray, np.ndarray]:
@@ -235,19 +247,27 @@ def _deepest_middle(level: np.ndarray, a: int, b: int) -> int:
 
 
 def find_cut_offset(samples: np.ndarray, rate: int, center: float) -> float:
-    """Offset (seconds into `samples`) where one song ends and the next begins.
+    """Offset (seconds into `samples`) where one song ends and the next begins."""
+    return find_cut(samples, rate, center)[0]
 
-    `center` is the rough cut. Returns it unchanged if the window is too short to judge.
+
+def find_cut(
+    samples: np.ndarray, rate: int, center: float, min_gap: float = GAP_MIN_S, allow_crossfade: bool = True
+) -> tuple[float, bool]:
+    """(offset in seconds, whether it is in a real gap) for the boundary nearest `center`.
+
+    `center` is the rough cut. Without a gap, the crossfade point is returned, or
+    `center` itself when `allow_crossfade` is False.
     """
     times, level = _loudness_db(samples, rate)
     if len(times) < 3:
-        return center
+        return center, False
     span = max(center, times[-1] - center, 1e-6)
     music = float(np.percentile(level, 90))
     threshold = max(min(music - GAP_BELOW_DB, -20.0), GAP_FLOOR_DB)
     hop_s = times[1] - times[0]
 
-    gaps = [(a, b) for a, b in _runs(level < threshold) if (b - a) * hop_s >= GAP_MIN_S]
+    gaps = [(a, b) for a, b in _runs(level < threshold) if (b - a) * hop_s >= min_gap]
     if gaps:
         def score(run: tuple[int, int]) -> float:
             a, b = run
@@ -256,7 +276,9 @@ def find_cut_offset(samples: np.ndarray, rate: int, center: float) -> float:
             middle = times[(a + b - 1) // 2]
             return length + 0.5 * depth - 1.2 * abs(middle - center) / span
         a, b = max(gaps, key=score)
-        return float(times[_deepest_middle(level, a, b)])
+        return float(times[_deepest_middle(level, a, b)]), True
+    if not allow_crossfade:
+        return center, False
 
     # No gap: songs crossfade. Cut at the lowest point of the smoothed loudness.
     k = max(1, int(round(CROSSFADE_SMOOTH_S / hop_s)))
@@ -264,7 +286,7 @@ def find_cut_offset(samples: np.ndarray, rate: int, center: float) -> float:
     smooth = 10 * np.log10(np.maximum(power, 1e-12))
     smooth[: k // 2] = smooth[len(smooth) - k // 2:] = np.inf  # edges only see half a window
     penalty = 1.5 * np.abs(times - center) / span   # dB: a clearly deeper dip may sit further away
-    return float(times[int(np.argmin(smooth + penalty))])
+    return float(times[int(np.argmin(smooth + penalty))]), False
 
 
 def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
@@ -281,26 +303,49 @@ def _decode_window(path: str, start: float, length: float) -> np.ndarray:
     return np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-async def snap_to_gap(path: str, t: float, window: float, duration: float) -> float:
-    """Move cut `t` to the real boundary between songs within ±window seconds."""
+async def snap_to_gap(
+    path: str, t: float, window: float, duration: float, min_gap: float = GAP_MIN_S,
+    allow_crossfade: bool = True, also: float | None = None,
+) -> tuple[float, bool]:
+    """(cut, found a real gap) for the boundary between songs within ±window seconds of `t`.
+
+    With `also`, the search reaches ±window around it too, still preferring points near `t`.
+    """
     if window <= 0 or t <= 0 or t >= duration:
-        return t
-    start = max(0.0, t - window)
-    length = min(duration, t + window) - start
+        return t, False
+    lo, hi = (t, t) if also is None else (min(t, also), max(t, also))
+    start = max(0.0, lo - window)
+    length = min(duration, hi + window) - start
     samples = await asyncio.to_thread(_decode_window, path, start, length)
     if samples.size == 0:
-        return t
-    return round(start + find_cut_offset(samples, ANALYSIS_RATE, t - start), 3)
+        return t, False
+    offset, found = find_cut(samples, ANALYSIS_RATE, t - start, min_gap, allow_crossfade)
+    return round(start + offset, 3), found
 
 
 async def refine_boundaries(tracks: list[dict[str, Any]], path: str, duration: float, window: float) -> None:
     """Snap every shared boundary between consecutive tracks, in place.
 
     Consecutive tracks share one cut point, so there is never a gap or an
-    overlap between songs.
+    overlap between songs. Drift found at one cut is applied to the next.
     """
+    if window <= 0:
+        return
+    drift = 0.0
     for prev, nxt in zip(tracks, tracks[1:]):
         if abs(prev["end"] - nxt["start"]) > 0.5:
             continue  # not contiguous (user removed a section); leave both edges alone
-        cut = await snap_to_gap(path, nxt["start"], window, duration)
+        stamp = nxt["start"]
+        guess = min(max(stamp + drift, 0.0), duration)
+        cut, found = await snap_to_gap(path, guess, window, duration, also=stamp)
+        if not found:
+            wide, found = await snap_to_gap(
+                path, guess, max(window, WIDE_SEARCH_S), duration, min_gap=WIDE_GAP_MIN_S, allow_crossfade=False, also=stamp,
+            )
+            if found:
+                cut = wide
+        if found:
+            drift = max(-MAX_DRIFT_S, min(MAX_DRIFT_S, cut - stamp))
+        elif nxt.get("origin") != "manual":
+            nxt["confidence"] = min(nxt.get("confidence", 1.0), UNSURE_CONFIDENCE)
         prev["end"] = nxt["start"] = cut

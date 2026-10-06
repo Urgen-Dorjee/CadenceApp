@@ -163,3 +163,31 @@ def test_crossfade_cuts_at_the_loudness_valley():
 def test_cut_stays_put_in_silence():
     samples = np.zeros(8000 * 2, dtype=np.float32)
     assert abs(find_cut_offset(samples, 8000, center=1.0) - 1.0) < 0.05
+
+
+def test_refine_tracks_drift_and_flags_cuts_without_a_gap(monkeypatch):
+    import asyncio
+
+    from services import audio_analysis
+    from services.tracklist import make_track
+
+    calls = []
+
+    async def fake_snap(path, t, window, duration, min_gap=0.15, allow_crossfade=True, also=None):
+        calls.append(round(t, 2))
+        if t < 150:
+            return 104.0, True        # first cut: real gap 4 s after its timestamp
+        return t + 0.5, False         # second cut: no gap anywhere
+
+    monkeypatch.setattr(audio_analysis, "snap_to_gap", fake_snap)
+    tracks = [
+        make_track(title="A", start=0, end=100, origin="chapters", source_id="s"),
+        make_track(title="B", start=100, end=200, origin="chapters", source_id="s"),
+        make_track(title="C", start=200, end=300, origin="chapters", source_id="s"),
+    ]
+    asyncio.run(audio_analysis.refine_boundaries(tracks, "x", 300, 5.0))
+    assert calls[0] == 100.0
+    assert calls[1] == 204.0            # searched at its timestamp plus the 4 s drift
+    assert tracks[1]["confidence"] == 0.95
+    assert tracks[2]["confidence"] == 0.6  # no gap: shown as "Check"
+    assert tracks[1]["end"] == tracks[2]["start"] == 204.5
