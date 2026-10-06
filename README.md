@@ -35,6 +35,7 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 ## Features
 
 - **One link in, an album out.** Works with single videos (jukeboxes, full albums, mixes) and playlists.
+- **Many at once.** Paste several links or drop several files; they're split two at a time. **Save all ready** saves every split whose cuts all look right and leaves the ones with cuts to check for you.
 - **Your own files too.** Open or drop an audio or video file (MP3, FLAC, M4A, WAV, MKV, MP4…). Songs are cut straight from the original, which is never changed or deleted.
 - **Finds song boundaries automatically** from chapters, the description, top comments or, as a last resort, the audio itself.
 - **Clean, exact cuts.** Each cut moves to the real gap between songs, is sample-accurate and gets a short fade so there's no click.

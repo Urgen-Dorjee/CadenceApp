@@ -13,7 +13,9 @@ function onJobChanged(previous: Job | undefined, job: Job) {
   usePrefsStore.getState().refreshStorage()
   const first = job.outputs[0]
   if (!first) return
-  if (usePrefsStore.getState().prefs?.open_when_done) window.electronAPI?.showItemInFolder(first.path)
+  // When several splits are saved in a row, show the folder once, after the last one.
+  const othersSaving = Object.values(useJobsStore.getState().jobs).some((j) => j.id !== job.id && j.status === 'exporting')
+  if (usePrefsStore.getState().prefs?.open_when_done && !othersSaving) window.electronAPI?.showItemInFolder(first.path)
   toast.success(job.message || 'Songs saved')
 }
 

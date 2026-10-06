@@ -154,7 +154,12 @@ async def export_job(job_id: str, body: ReviewIn):
     tracks = _validate_review(job, body)
     if any(not s.get("path") for s in job["sources"]):
         raise HTTPException(status_code=409, detail="The downloaded audio was removed after saving. Split the video again to save it again.")
-    get_store().update(job_id, tracks=tracks, collection=body.collection.model_dump(), destination=body.destination)
+    # Shown as saving straight away, even while it waits for another split to finish saving.
+    job = get_store().update(
+        job_id, tracks=tracks, collection=body.collection.model_dump(), destination=body.destination,
+        status="exporting", progress=0, message="Waiting to save", error=None,
+    )
+    await ws.send_job(job)
     pipeline.start_export(job_id)
     return {"status": "started"}
 

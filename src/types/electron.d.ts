@@ -9,7 +9,7 @@ export interface UpdateStatus {
 interface ElectronAPI {
   getBackendInfo: () => Promise<{ port: number; token: string }>
   selectFolder: (options?: { defaultPath?: string; title?: string }) => Promise<string | null>
-  selectMediaFile: () => Promise<string | null>
+  selectMediaFiles: () => Promise<string[]>
   pathForFile: (file: File) => string
   setTheme: (theme: 'system' | 'dark' | 'light') => Promise<boolean>
   onSystemThemeChange: (callback: () => void) => () => void

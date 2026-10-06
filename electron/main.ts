@@ -164,18 +164,18 @@ function registerIpcHandlers() {
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle('dialog:openMediaFile', async () => {
-    if (!mainWindow) return null
+  ipcMain.handle('dialog:openMediaFiles', async () => {
+    if (!mainWindow) return []
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Choose an audio or video file to split',
-      buttonLabel: 'Split this file',
-      properties: ['openFile'],
+      title: 'Choose audio or video files to split',
+      buttonLabel: 'Split',
+      properties: ['openFile', 'multiSelections'],
       filters: [
         { name: 'Audio and video', extensions: MEDIA_EXTENSIONS },
         { name: 'All files', extensions: ['*'] },
       ],
     })
-    return result.canceled ? null : result.filePaths[0]
+    return result.canceled ? [] : result.filePaths
   })
 
   // Theme: 'system' | 'dark' | 'light'. Returns whether the app should render dark.
