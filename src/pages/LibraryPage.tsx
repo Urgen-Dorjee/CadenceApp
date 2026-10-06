@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { ArrowLeft, FolderOpen, Loader2, Music2, Pause, Play, RefreshCw, Search, Shuffle } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Shuffle } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { api, type LibrarySong } from '../services/api'
+import { api, type LibrarySong, type TagChanges } from '../services/api'
 import { useAppStore } from '../stores/appStore'
 import { useJobsStore } from '../stores/jobsStore'
 import { usePlayerStore } from '../stores/playerStore'
@@ -11,12 +11,13 @@ import { usePrefsStore } from '../stores/prefsStore'
 import { albumOf, artistOf, filterSongs, groupSongs, sortSongs, type LibrarySort, type SongGroup } from '../lib/library'
 import { formatDuration, formatTime } from '../lib/time'
 import { SongCover } from '../components/layout/PlayerBar'
+import EditTagsDialog from '../components/library/EditTagsDialog'
 
 type View = 'songs' | 'artists' | 'albums'
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-function SongTable({ songs, showAlbum = true }: { songs: LibrarySong[]; showAlbum?: boolean }) {
+function SongTable({ songs, showAlbum = true, onEdit }: { songs: LibrarySong[]; showAlbum?: boolean; onEdit: (songs: LibrarySong[]) => void }) {
   const current = usePlayerStore((s) => s.queue[s.index])
   const playing = usePlayerStore((s) => s.playing)
   const playList = usePlayerStore((s) => s.playList)
@@ -32,7 +33,7 @@ function SongTable({ songs, showAlbum = true }: { songs: LibrarySong[]; showAlbu
             {showAlbum && <th className="py-2 font-medium hidden md:table-cell">Album</th>}
             <th className="py-2 font-medium w-16 hidden lg:table-cell">Year</th>
             <th className="py-2 pr-2 font-medium w-16 text-right">Time</th>
-            <th className="w-12 pr-3"><span className="sr-only">Actions</span></th>
+            <th className="w-20 pr-3"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -72,7 +73,15 @@ function SongTable({ songs, showAlbum = true }: { songs: LibrarySong[]; showAlbu
                 {showAlbum && <td className="truncate text-muted hidden md:table-cell max-w-[16rem]">{albumOf(song)}</td>}
                 <td className="text-muted tnum hidden lg:table-cell">{song.year}</td>
                 <td className="pr-2 text-right text-muted tnum font-mono text-xs">{formatTime(song.duration, false)}</td>
-                <td className="pr-3">
+                <td className="pr-3 whitespace-nowrap">
+                  <button
+                    className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    onClick={() => onEdit([song])}
+                    aria-label={`Edit tags of ${song.title}`}
+                    title="Edit tags"
+                  >
+                    <Pencil size={14} />
+                  </button>
                   <button
                     className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
                     onClick={() => window.electronAPI?.showItemInFolder(song.path)}
@@ -136,12 +145,25 @@ export default function LibraryPage() {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<{ kind: 'artist' | 'album'; key: string } | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [editing, setEditing] = useState<LibrarySong[] | null>(null)
 
   const load = useCallback(() => api.librarySongs().then(setSongs).catch((e) => toast.error(e.message)), [])
 
   useEffect(() => {
     if (ready) load()
   }, [ready, load, completedCount])
+
+  const saveTags = async (ids: string[], changes: TagChanges) => {
+    const updated = await api.editSongs(ids, changes)
+    const byId = new Map(updated.map((s) => [s.id, s]))
+    setSongs((old) => old?.map((s) => byId.get(s.id) ?? s) ?? null)
+    toast.success(ids.length === 1 ? 'Tags saved' : `Tags saved for ${ids.length} songs`)
+    // An album or singer renamed from its own page: follow it to its new name.
+    if (open && ids.length > 1) {
+      const first = updated[0]
+      setOpen({ kind: open.kind, key: (open.kind === 'album' ? albumOf(first) : artistOf(first)).toLowerCase() })
+    }
+  }
 
   const rescan = async () => {
     setScanning(true)
@@ -260,17 +282,21 @@ export default function LibraryPage() {
               <h2 className="font-display text-lg font-semibold truncate">{openGroup.name}</h2>
               <p className="text-xs text-muted">{openGroup.subtitle}</p>
             </div>
+            <button className="btn-secondary" onClick={() => setEditing(openGroup.songs)} title="Change the album, singer or year of every song here">
+              <Pencil size={14} aria-hidden="true" /> Edit all
+            </button>
             <button className="btn-primary" onClick={() => playList(openGroup.songs, 0)}>
               <Play size={14} aria-hidden="true" /> Play all
             </button>
           </div>
-          <SongTable songs={openGroup.songs} showAlbum={open?.kind === 'artist'} />
+          <SongTable songs={openGroup.songs} showAlbum={open?.kind === 'artist'} onEdit={setEditing} />
         </section>
       ) : view === 'songs' ? (
-        <SongTable songs={filtered} />
+        <SongTable songs={filtered} onEdit={setEditing} />
       ) : (
         <GroupGrid groups={view === 'artists' ? artists : albums} onOpen={(g) => setOpen({ kind: view === 'artists' ? 'artist' : 'album', key: g.key })} />
       )}
+      <EditTagsDialog songs={editing} onClose={() => setEditing(null)} onSave={saveTags} />
     </div>
   )
 }

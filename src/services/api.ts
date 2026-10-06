@@ -67,6 +67,16 @@ export interface LibraryMatch {
   album: string
 }
 
+/** Tag changes for saved songs. Only the fields given are changed; "" removes a tag. */
+export interface TagChanges {
+  title?: string
+  artist?: string
+  album?: string
+  album_artist?: string
+  year?: string
+  track?: number
+}
+
 export interface StorageInfo {
   library_dir: string
   library_exists: boolean
@@ -118,6 +128,7 @@ export const api = {
   getPreferences: () => request<Preferences>('GET', '/api/preferences'),
   savePreferences: (prefs: Preferences) => request<Preferences>('PUT', '/api/preferences', prefs),
   librarySongs: (sort = 'artist') => request<LibrarySong[]>('GET', `/api/library/songs?sort=${sort}`),
+  editSongs: (ids: string[], changes: TagChanges) => request<LibrarySong[]>('PUT', '/api/library/songs', { ids, changes }),
   scanLibrary: () => request<{ added: number; updated: number; removed: number; total: number }>('POST', '/api/library/scan'),
   songAudioUrl: (id: string) => mediaUrl(`/api/library/songs/${id}/audio`),
   songCoverUrl: (id: string) => mediaUrl(`/api/library/songs/${id}/cover`),
