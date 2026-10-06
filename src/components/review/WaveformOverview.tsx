@@ -3,10 +3,10 @@ import { clsx } from 'clsx'
 import type { Track } from '../../types/job'
 import { formatTime } from '../../lib/time'
 import { needsCheck } from '../../lib/tracks'
-import { SEGMENT_TOKENS, columnPeaks, prepareCanvas, segmentAt, tokenColor } from '../../lib/waveform'
+import { SEGMENT_TOKENS, drawBars, prepareCanvas, segmentAt, tokenColor } from '../../lib/waveform'
 import { useElementWidth } from '../../hooks/useElementWidth'
 
-const HEIGHT = 88
+const HEIGHT = 64
 
 interface Props {
   tracks: Track[]
@@ -32,28 +32,34 @@ export default function WaveformOverview(p: Props) {
     return Math.min(p.duration, Math.max(0, ((clientX - rect.left) / rect.width) * p.duration))
   }
 
-  // Draw the waveform. Each column takes the colour of the song it belongs to.
+  // Draw the waveform as rounded bars, each in the colour of its song.
+  // Bars already played are bright, the rest dimmed.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !width) return
     const ctx = prepareCanvas(canvas, width, HEIGHT)
-    const mid = HEIGHT / 2
     if (!p.peaks) {
       ctx.fillStyle = tokenColor('--line')
-      ctx.fillRect(0, mid - 1, width, 2)
+      ctx.fillRect(0, HEIGHT / 2 - 1, width, 2)
       return
     }
-    const cols = columnPeaks(p.peaks, width)
-    const colors = SEGMENT_TOKENS.map((t) => [tokenColor(t, 0.9), tokenColor(t, 0.22)])
-    const outside = tokenColor('--faint', 0.35)
-    for (let x = 0; x < width; x++) {
-      const t = ((x + 0.5) / width) * p.duration
-      const i = segmentAt(p.tracks, t)
-      ctx.fillStyle = i === -1 ? outside : colors[i % colors.length][p.tracks[i].include ? 0 : 1]
-      const h = Math.max(1, cols[x] * (HEIGHT - 8))
-      ctx.fillRect(x, mid - h / 2, 1, h)
-    }
-  }, [p.peaks, p.tracks, p.duration, width])
+    const colors = SEGMENT_TOKENS.map((t) => [tokenColor(t, 0.95), tokenColor(t, 0.55)])
+    const excluded = SEGMENT_TOKENS.map((t) => [tokenColor(t, 0.28), tokenColor(t, 0.18)])
+    const outside = tokenColor('--faint', 0.3)
+    const played = p.playhead ?? -Infinity
+    drawBars(ctx, p.peaks, width, HEIGHT, {
+      bar: 2,
+      gap: 1,
+      top: 14,
+      bottom: 4,
+      fill: (at) => {
+        const t = at * p.duration
+        const i = segmentAt(p.tracks, t)
+        if (i === -1) return outside
+        return (p.tracks[i].include ? colors : excluded)[i % colors.length][t <= played ? 0 : 1]
+      },
+    })
+  }, [p.peaks, p.tracks, p.duration, width, p.playhead])
 
   const cuts = p.tracks
     .map((t, i) => ({ index: i, time: t.start, linked: i > 0 && Math.abs(p.tracks[i - 1].end - t.start) <= 0.5 }))
@@ -109,7 +115,9 @@ export default function WaveformOverview(p: Props) {
             )}
             style={{ left: pct(t.start), width: pct(t.end - t.start) }}
           >
-            <span className="absolute left-1.5 top-1 text-[10px] font-semibold text-muted tnum">{i + 1}</span>
+            {((t.end - t.start) / p.duration) * width >= 16 && (
+              <span className="absolute left-1.5 top-0 text-[10px] font-semibold text-muted tnum">{i + 1}</span>
+            )}
             {needsCheck(t) && (
               <span
                 className="absolute inset-x-0 bottom-0 h-1 bg-[repeating-linear-gradient(90deg,rgb(var(--warn)),rgb(var(--warn))_4px,transparent_4px,transparent_8px)]"

@@ -58,6 +58,8 @@ if not settings.cadence_token:
 
 
 AUDIO_FORMATS = ("mp3", "flac", "m4a", "opus")
+# Bumped when a saved preference needs upgrading on load (see load_preferences).
+PREFS_VERSION = 2
 
 
 class Preferences(BaseModel):
@@ -81,19 +83,27 @@ class Preferences(BaseModel):
     audio_bitrate: int = 320
     # Fade applied at each cut edge to remove clicks, in milliseconds.
     edge_fade_ms: int = 10
-    # How far a cut may move to land on the quietest point, in seconds.
-    snap_window_s: float = 2.0
+    # How far a cut may move to land on the gap between songs, in seconds.
+    # Tracklist timestamps are often 3-4 s off, so this needs room.
+    snap_window_s: float = 5.0
     artist_template: str = "Artists/{artist}/{artist} - {title}"
     album_template: str = "Albums/{album}{year_suffix}/{track:02} - {title}"
     collection_template: str = "Collections/{collection}/{track:02} - {title}"
     single_template: str = "Singles/{title}"
+    version: int = PREFS_VERSION
 
 
 def load_preferences() -> Preferences:
     try:
         with open(settings.prefs_path, "r", encoding="utf-8") as f:
-            return Preferences(**json.load(f))
-    except (OSError, ValueError):
+            data = json.load(f)
+        if data.get("version", 1) < 2:
+            # ±2 s was the old default and too narrow to reach the real gap between songs.
+            if data.get("snap_window_s") == 2.0:
+                data["snap_window_s"] = 5.0
+            data["version"] = PREFS_VERSION
+        return Preferences(**data)
+    except (OSError, ValueError, TypeError):
         return Preferences()
 
 

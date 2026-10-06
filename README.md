@@ -2,7 +2,7 @@
 
 **Split YouTube jukeboxes, movie albums and singer collections into separate, tagged songs.**
 
-Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie album. Cadence finds where each song starts and ends, cuts at the quietest point between songs so nothing is clipped, and files the songs into your music library with titles, album, year, track numbers and cover art.
+Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie album. Cadence finds where each song starts and ends, cuts in the gap between songs so nothing is clipped and nothing spills over, and files the songs into your music library with titles, album, year, track numbers and cover art.
 
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-33-47848F)
@@ -36,7 +36,7 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 
 - **One link in, an album out.** Works with single videos (jukeboxes, full albums, mixes) and playlists.
 - **Finds song boundaries automatically** from chapters, the description, top comments or, as a last resort, the audio itself.
-- **Clean, gapless cuts.** Each cut snaps to the quietest point nearby, is sample-accurate and gets a short fade so there's no click.
+- **Clean, exact cuts.** Each cut moves to the real gap between songs, is sample-accurate and gets a short fade so there's no click.
 - **Review before saving.** Waveform overview, per-cut close-ups, play any song, nudge cuts by 0.1 s, split at the playhead, join songs, include or skip songs.
 - **Proper tags.** Title, artist, album artist, album, year, track number and cover art in MP3, M4A (AAC), Opus or FLAC.
 - **Organised library.** Configurable folder layouts per collection type, and a built-in Library with search, cover art and a player.
@@ -56,7 +56,13 @@ Cadence trusts the most reliable source it can find, in this order:
 | Top comments | The comment with the most timestamps | Medium |
 | Audio gaps | Quiet stretches in the waveform, longest first, songs at least 90 s long | Lower, flagged for review |
 
-Every cut then moves to the quietest 20 ms within ±2 s (configurable). The audio is decoded and cut at exactly that point, with a 10 ms fade so there's no click. Neighbouring songs share one cut point, so there's never a gap or an overlap.
+Timestamps are whole seconds and are often a few seconds off, so every cut then moves to where one song really ends and the next begins, within ±5 s (configurable in **Settings → Audio**):
+
+- **Songs separated by a gap:** the cut goes in the middle of the silence. Short dips between notes or drum hits (under 150 ms) are ignored, so a cut can't land inside the end of a song.
+- **Crossfaded songs (no gap):** the cut goes to the quietest point of the crossfade.
+- If several gaps are in range, the one nearest the timestamp wins.
+
+The audio is then decoded and cut at exactly that point (accurate to about 1 ms), with a 10 ms fade so there's no click. Neighbouring songs share one cut point, so there's never a gap or an overlap.
 
 Nothing is saved until you review the result. Uncertain cuts and segments too short to be a song are flagged.
 

@@ -65,7 +65,7 @@ def test_snapping_moves_a_rough_cut_into_the_gap(jukebox):
         make_track(title="A", start=0, end=102, origin="chapters", source_id="s"),
         make_track(title="B", start=102, end=duration, origin="chapters", source_id="s"),
     ]
-    asyncio.run(audio_analysis.refine_boundaries(tracks, jukebox, duration, window=2.0))
+    asyncio.run(audio_analysis.refine_boundaries(tracks, jukebox, duration, window=5.0))
     assert 100.0 <= tracks[1]["start"] <= 101.5
     assert tracks[0]["end"] == tracks[1]["start"]  # shared cut: no gap, no overlap
 

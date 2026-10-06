@@ -176,30 +176,99 @@ def tracks_from_profile(profile: AudioProfile, source_id: str) -> list[dict[str,
     return tracks
 
 
-# --- Snapping cuts to the quietest point ---------------------------------------
+# --- Snapping cuts to the gap between songs -------------------------------------
+#
+# Timestamps from chapters and descriptions are whole seconds and often a few
+# seconds off, so each cut is moved to where one song really ends and the next
+# begins. Two cases:
+#
+# 1. A gap: a stretch of near-silence at least GAP_MIN_S long. Short dips
+#    between notes or drum hits (30-80 ms) are not gaps, so they can't trap the cut.
+#    The cut goes in the deepest part of the gap.
+# 2. No gap (crossfade): the cut goes to the lowest point of the smoothed
+#    loudness, which is the middle of the crossfade.
+#
+# Nearby candidates are preferred, so a cut never jumps to a pause inside a song
+# when a real gap is closer to the timestamp.
+
+SNAP_HOP_S = 0.01          # loudness measured every 10 ms...
+SNAP_FRAME_S = 0.03        # ...over 30 ms
+GAP_BELOW_DB = 30.0        # a gap is this much quieter than the music around it
+GAP_FLOOR_DB = -50.0       # anything below this is silence, however quiet the music
+GAP_MIN_S = 0.15
+DEEPEST_WITHIN_DB = 3.0    # cut in the part of the gap within 3 dB of its quietest point
+SILENCE_FLOOR_DB = -70.0   # below this everything counts as equally silent
+CROSSFADE_SMOOTH_S = 0.4
+
+
+def _loudness_db(samples: np.ndarray, rate: int) -> tuple[np.ndarray, np.ndarray]:
+    """(times, level in dBFS) every SNAP_HOP_S, measured over SNAP_FRAME_S."""
+    frame = max(1, int(rate * SNAP_FRAME_S))
+    hop = max(1, int(rate * SNAP_HOP_S))
+    if len(samples) < frame:
+        return np.zeros(0), np.zeros(0)
+    n = 1 + (len(samples) - frame) // hop
+    squares = np.concatenate([[0.0], np.cumsum(np.square(samples.astype(np.float64)))])
+    starts = hop * np.arange(n)
+    power = (squares[starts + frame] - squares[starts]) / frame
+    times = (starts + frame / 2) / rate
+    return times, 10 * np.log10(np.maximum(power, 1e-12))
+
+
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """(start, end) index pairs of every run of True values, end exclusive."""
+    padded = np.concatenate([[False], mask, [False]])
+    changes = np.flatnonzero(padded[1:] != padded[:-1])
+    return [(int(a), int(b)) for a, b in changes.reshape(-1, 2)]
+
+
+def _deepest_middle(level: np.ndarray, a: int, b: int) -> int:
+    """Index in the middle of the quietest part of level[a:b].
+
+    Digital silence at the end of a fade and the hiss of a gap are both inaudible,
+    so levels below SILENCE_FLOOR_DB count as equal and the cut lands mid-silence.
+    """
+    gap = np.maximum(level[a:b], SILENCE_FLOOR_DB)
+    deep = _runs(gap <= float(gap.min()) + DEEPEST_WITHIN_DB)
+    lo, hi = max(deep, key=lambda r: r[1] - r[0])
+    return a + (lo + hi - 1) // 2
+
+
+def find_cut_offset(samples: np.ndarray, rate: int, center: float) -> float:
+    """Offset (seconds into `samples`) where one song ends and the next begins.
+
+    `center` is the rough cut. Returns it unchanged if the window is too short to judge.
+    """
+    times, level = _loudness_db(samples, rate)
+    if len(times) < 3:
+        return center
+    span = max(center, times[-1] - center, 1e-6)
+    music = float(np.percentile(level, 90))
+    threshold = max(min(music - GAP_BELOW_DB, -20.0), GAP_FLOOR_DB)
+    hop_s = times[1] - times[0]
+
+    gaps = [(a, b) for a, b in _runs(level < threshold) if (b - a) * hop_s >= GAP_MIN_S]
+    if gaps:
+        def score(run: tuple[int, int]) -> float:
+            a, b = run
+            length = min((b - a) * hop_s, 1.0)          # up to 1 s, longer gaps are more convincing
+            depth = min(threshold - float(level[a:b].min()), 30.0) / 30.0
+            middle = times[(a + b - 1) // 2]
+            return length + 0.5 * depth - 1.2 * abs(middle - center) / span
+        a, b = max(gaps, key=score)
+        return float(times[_deepest_middle(level, a, b)])
+
+    # No gap: songs crossfade. Cut at the lowest point of the smoothed loudness.
+    k = max(1, int(round(CROSSFADE_SMOOTH_S / hop_s)))
+    power = np.convolve(10 ** (level / 10), np.ones(k) / k, mode="same")
+    smooth = 10 * np.log10(np.maximum(power, 1e-12))
+    smooth[: k // 2] = smooth[len(smooth) - k // 2:] = np.inf  # edges only see half a window
+    penalty = 1.5 * np.abs(times - center) / span   # dB: a clearly deeper dip may sit further away
+    return float(times[int(np.argmin(smooth + penalty))])
+
 
 def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, creationflags=_NO_WINDOW, **kwargs)
-
-
-def find_quiet_offset(samples: np.ndarray, rate: int, center: float, frame_s: float = 0.02) -> float:
-    """Offset (seconds into `samples`) of the quietest 20 ms frame, preferring frames near `center`.
-
-    The distance penalty is small: it only breaks ties between similarly quiet
-    frames, so a real gap a second away still beats a slightly quieter blip.
-    """
-    frame = max(1, int(rate * frame_s))
-    hop = max(1, frame // 2)
-    if len(samples) < frame:
-        return center
-    n = 1 + (len(samples) - frame) // hop
-    idx = np.arange(frame)[None, :] + hop * np.arange(n)[:, None]
-    rms = np.sqrt(np.mean(np.square(samples[idx].astype(np.float64)), axis=1))
-    peak = float(rms.max()) or 1.0
-    times = (hop * np.arange(n) + frame / 2) / rate
-    span = max(center, len(samples) / rate - center) or 1.0
-    score = rms / peak + 0.05 * np.abs(times - center) / span
-    return float(times[int(np.argmin(score))])
 
 
 def _decode_window(path: str, start: float, length: float) -> np.ndarray:
@@ -212,8 +281,8 @@ def _decode_window(path: str, start: float, length: float) -> np.ndarray:
     return np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-async def snap_to_quiet(path: str, t: float, window: float, duration: float) -> float:
-    """Move cut `t` to the quietest point within ±window seconds."""
+async def snap_to_gap(path: str, t: float, window: float, duration: float) -> float:
+    """Move cut `t` to the real boundary between songs within ±window seconds."""
     if window <= 0 or t <= 0 or t >= duration:
         return t
     start = max(0.0, t - window)
@@ -221,7 +290,7 @@ async def snap_to_quiet(path: str, t: float, window: float, duration: float) -> 
     samples = await asyncio.to_thread(_decode_window, path, start, length)
     if samples.size == 0:
         return t
-    return round(start + find_quiet_offset(samples, ANALYSIS_RATE, t - start), 3)
+    return round(start + find_cut_offset(samples, ANALYSIS_RATE, t - start), 3)
 
 
 async def refine_boundaries(tracks: list[dict[str, Any]], path: str, duration: float, window: float) -> None:
@@ -233,5 +302,5 @@ async def refine_boundaries(tracks: list[dict[str, Any]], path: str, duration: f
     for prev, nxt in zip(tracks, tracks[1:]):
         if abs(prev["end"] - nxt["start"]) > 0.5:
             continue  # not contiguous (user removed a section); leave both edges alone
-        cut = await snap_to_quiet(path, nxt["start"], window, duration)
+        cut = await snap_to_gap(path, nxt["start"], window, duration)
         prev["end"] = nxt["start"] = cut

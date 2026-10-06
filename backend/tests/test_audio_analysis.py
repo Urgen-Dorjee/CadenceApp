@@ -3,7 +3,7 @@ import numpy as np
 from services.audio_analysis import (
     add_strong_changes,
     boundaries_from_silences,
-    find_quiet_offset,
+    find_cut_offset,
     novelty_curve,
     silences_from_rms,
     split_long_segments,
@@ -105,15 +105,61 @@ def test_downsample_peaks_is_bounded_and_normalised():
     assert max(peaks) == 1.0 and min(peaks) >= 0
 
 
-def test_find_quiet_offset_lands_in_the_gap():
+def _music(seconds: float, rate: int = 8000, seed: int = 0) -> np.ndarray:
+    """Noisy "music" with a 40 ms near-silence between notes every 0.4 s."""
+    rng = np.random.default_rng(seed)
+    x = rng.normal(0, 0.3, int(seconds * rate)).astype(np.float32)
+    for t in np.arange(0.2, seconds, 0.4):
+        x[int(t * rate):int((t + 0.04) * rate)] *= 0.001
+    return x
+
+
+def test_cut_lands_in_the_gap():
     rate = 8000
-    rng = np.random.default_rng(0)
-    samples = rng.normal(0, 0.3, rate * 4).astype(np.float32)
+    samples = _music(4)
     samples[int(2.6 * rate):int(2.8 * rate)] = 0.0  # gap 0.6 s after the rough cut at 2.0 s
-    offset = find_quiet_offset(samples, rate, center=2.0)
+    offset = find_cut_offset(samples, rate, center=2.0)
     assert 2.6 <= offset <= 2.8
 
 
-def test_find_quiet_offset_prefers_center_when_all_equal():
+def test_dips_between_notes_do_not_trap_the_cut():
+    """The old snapper picked the quietest 20 ms, which is often a dip inside a song."""
+    rate = 8000
+    samples = _music(10)
+    samples[int(8.0 * rate):int(8.3 * rate)] = 0.0  # real gap 3 s after the timestamp
+    offset = find_cut_offset(samples, rate, center=5.0)
+    assert 8.0 <= offset <= 8.3
+
+
+def test_cut_prefers_the_gap_nearest_the_timestamp():
+    rate = 8000
+    samples = _music(10)
+    samples[int(1.0 * rate):int(1.3 * rate)] = 0.0   # pause far from the timestamp
+    samples[int(5.4 * rate):int(5.7 * rate)] = 0.0   # gap next to it
+    assert 5.4 <= find_cut_offset(samples, rate, center=5.0) <= 5.7
+
+
+def test_cut_goes_mid_silence_not_to_the_end_of_a_fade():
+    """Digital silence at the end of a fade and gap hiss are equally inaudible."""
+    rate = 8000
+    rng = np.random.default_rng(1)
+    samples = _music(6)
+    samples[int(2.0 * rate):int(3.0 * rate)] *= np.linspace(1, 0, rate) ** 2  # fade-out to exact zero
+    samples[int(3.0 * rate):int(4.0 * rate)] = rng.normal(0, 1e-4, rate)      # 1 s gap with hiss
+    offset = find_cut_offset(samples, rate, center=3.0)
+    assert 3.0 <= offset <= 4.0
+
+
+def test_crossfade_cuts_at_the_loudness_valley():
+    rate = 8000
+    rng = np.random.default_rng(2)
+    n = 10 * rate
+    t = np.arange(n) / rate
+    gain = np.clip(np.abs(t - 6.0) / 1.5, 0.15, 1.0)  # songs crossfade around 6 s, never silent
+    samples = (rng.normal(0, 0.3, n) * gain).astype(np.float32)
+    assert abs(find_cut_offset(samples, rate, center=4.5) - 6.0) < 0.4
+
+
+def test_cut_stays_put_in_silence():
     samples = np.zeros(8000 * 2, dtype=np.float32)
-    assert abs(find_quiet_offset(samples, 8000, center=1.0) - 1.0) < 0.02
+    assert abs(find_cut_offset(samples, 8000, center=1.0) - 1.0) < 0.05

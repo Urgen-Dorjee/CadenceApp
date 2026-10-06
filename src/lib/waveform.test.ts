@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columnPeaks, segmentAt } from './waveform'
+import { barLayout, columnPeaks, segmentAt } from './waveform'
 
 describe('columnPeaks', () => {
   it('max-pools peaks into pixel columns', () => {
@@ -28,5 +28,19 @@ describe('segmentAt', () => {
   it('returns -1 in gaps and outside', () => {
     expect(segmentAt(segments, 275)).toBe(-1)
     expect(segmentAt(segments, 400)).toBe(-1)
+  })
+})
+
+describe('barLayout', () => {
+  it('fits bars with gaps into the width', () => {
+    const bars = barLayout([1, 0.5, 0.25, 0], 100, 50, 3, 2)
+    expect(bars).toHaveLength(20)
+    expect(bars[1].x).toBe(5)
+    expect(bars.at(-1)!.x + 3).toBeLessThanOrEqual(100)
+  })
+  it('keeps loud bars inside the area and quiet ones visible', () => {
+    const bars = barLayout([1, 0], 10, 50, 3, 2)
+    expect(bars[0].height).toBe(50)
+    expect(bars.at(-1)!.height).toBe(3)
   })
 })

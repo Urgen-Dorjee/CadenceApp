@@ -48,3 +48,45 @@ export function segmentAt(segments: { start: number; end: number }[], t: number)
   }
   return -1
 }
+
+export interface Bar {
+  x: number
+  /** Centre of the bar as a fraction of the width, 0..1, for colouring by time. */
+  at: number
+  height: number
+}
+
+/**
+ * Rounded-bar layout: one bar per `bar + gap` pixels, heights on a gentle curve so
+ * loud passages don't flatten into a solid wall and quiet ones stay visible.
+ */
+export function barLayout(peaks: number[], width: number, area: number, bar: number, gap: number): Bar[] {
+  const count = Math.max(0, Math.floor((width + gap) / (bar + gap)))
+  const cols = columnPeaks(peaks, count)
+  const bars: Bar[] = []
+  for (let i = 0; i < count; i++) {
+    const x = i * (bar + gap)
+    bars.push({ x, at: (x + bar / 2) / width, height: Math.max(bar, Math.pow(cols[i], 0.8) * area) })
+  }
+  return bars
+}
+
+/** Draw rounded bars centred vertically in [top, height - bottom]. `fill` picks each bar's colour. */
+export function drawBars(
+  ctx: CanvasRenderingContext2D,
+  peaks: number[],
+  width: number,
+  height: number,
+  opts: { bar: number; gap: number; top?: number; bottom?: number; fill: (at: number) => string },
+) {
+  const top = opts.top ?? 0
+  const area = height - top - (opts.bottom ?? 0)
+  const mid = top + area / 2
+  const radius = opts.bar / 2
+  for (const b of barLayout(peaks, width, area * 0.92, opts.bar, opts.gap)) {
+    ctx.fillStyle = opts.fill(b.at)
+    ctx.beginPath()
+    ctx.roundRect(b.x, mid - b.height / 2, opts.bar, b.height, radius)
+    ctx.fill()
+  }
+}

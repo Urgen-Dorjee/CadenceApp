@@ -9,6 +9,7 @@ import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { formatTime, formatDuration } from '../lib/time'
 import { canMergeWithNext, mergeWithNext, moveEnd, moveStart, needsCheck, needsName, splitAt, updateTrack } from '../lib/tracks'
 import { folderOf, previewPath } from '../lib/paths'
+import { cutForPlayingSong } from '../lib/closeup'
 import type { Collection, Track } from '../types/job'
 import { Thumbnail } from '../components/jobs/JobCard'
 import StatusPill from '../components/ui/StatusPill'
@@ -104,11 +105,37 @@ export default function ReviewPage() {
   )
   const selectedIndex = tracks.findIndex((t) => t.id === selectedId)
   const selectedCut = cutIndexes.indexOf(selectedIndex)
-  const selectCut = (position: number) => {
+
+  // The cut shown in the close-up. Paused, it's the one you selected (kept by song id
+  // so it survives edits). Playing, it's the playing song's cut nearest the playhead,
+  // and that one stays shown after playback stops.
+  const playingIndex = tracks.findIndex((t) => t.id === playingTrackId)
+  const followCut = player.playing ? cutForPlayingSong(tracks, playingIndex, cutIndexes, player.time) : null
+  const [closeUpId, setCloseUpId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!player.playing && selectedCut !== -1) setCloseUpId(tracks[selectedIndex].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+  useEffect(() => {
+    if (followCut !== null) setCloseUpId(tracks[followCut].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followCut])
+  useEffect(() => {
+    if (playingTrackId) setSelectedId(playingTrackId)
+  }, [playingTrackId])
+  const closeUpIndex = followCut ?? tracks.findIndex((t) => t.id === closeUpId)
+  const closeUpCut = cutIndexes.indexOf(closeUpIndex)
+
+  /** Go to another cut. While playing, jump to just before it so you hear and see the split. */
+  const goToCut = (position: number) => {
     const index = cutIndexes[position]
-    if (index !== undefined) setSelectedId(tracks[index].id)
+    if (index === undefined) return
+    const track = tracks[index]
+    setCloseUpId(track.id)
+    if (player.playing) player.playRange(track.source_id, Math.max(0, track.start - 3))
+    else setSelectedId(track.id)
   }
-  const nextToCheck = cutIndexes.findIndex((i, pos) => pos > selectedCut && needsCheck(tracks[i]))
+  const nextToCheck = cutIndexes.findIndex((i, pos) => pos > closeUpCut && needsCheck(tracks[i]))
 
   const splitHere = () => {
     if (!player.sourceId) return
@@ -435,27 +462,29 @@ export default function ReviewPage() {
             />
           )}
 
-          {singleSource && selectedCut !== -1 && (
+          {singleSource && closeUpCut !== -1 && (
             <CutCloseUp
               jobId={id}
               tracks={tracks}
-              index={selectedIndex}
-              cutNumber={selectedCut + 1}
+              index={closeUpIndex}
+              cutNumber={closeUpCut + 1}
               cutCount={cutIndexes.length}
               playhead={player.sourceId === singleSource.id ? player.time : null}
+              playing={player.playing && player.sourceId === singleSource.id}
               disabled={exporting}
               onMoveCut={onStart}
               onHearCut={onPreviewCut}
-              onPrevCut={() => selectCut(selectedCut - 1)}
-              onNextCut={() => selectCut(selectedCut + 1)}
-              onNextToCheck={nextToCheck !== -1 ? () => selectCut(nextToCheck) : null}
+              onSeek={(t) => player.playRange(singleSource.id, t)}
+              onPrevCut={() => goToCut(closeUpCut - 1)}
+              onNextCut={() => goToCut(closeUpCut + 1)}
+              onNextToCheck={nextToCheck !== -1 ? () => goToCut(nextToCheck) : null}
             />
           )}
-          {singleSource && selectedCut === -1 && cutIndexes.length > 0 && (
+          {singleSource && closeUpCut === -1 && cutIndexes.length > 0 && (
             <p className="text-xs text-muted">
               Select a song, or click a cut marker, to fine-tune where it starts.
               {flagged > 0 && (
-                <button className="ml-2 text-warn hover:underline" onClick={() => selectCut(cutIndexes.findIndex((i) => needsCheck(tracks[i])))}>
+                <button className="ml-2 text-warn hover:underline" onClick={() => goToCut(cutIndexes.findIndex((i) => needsCheck(tracks[i])))}>
                   Check the first flagged cut
                 </button>
               )}

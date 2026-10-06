@@ -424,9 +424,9 @@ export default function SettingsPage() {
               </select>
             </Row>
           )}
-          <Row title="Cut snapping" hint="How far a cut may move to land on the quietest moment between songs." htmlFor="snap">
+          <Row title="Cut snapping" hint="How far a cut may move from the tracklist time to land in the gap between songs. Tracklist times are often a few seconds off." htmlFor="snap">
             <div className="flex items-center gap-3">
-              <input id="snap" type="range" min={0} max={5} step={0.5} value={prefs.snap_window_s}
+              <input id="snap" type="range" min={0} max={10} step={0.5} value={prefs.snap_window_s}
                 onChange={(e) => save({ snap_window_s: Number(e.target.value) })} className="w-44 accent-[rgb(var(--accent))]" />
               <span className="text-[13px] tnum w-14 text-right">{prefs.snap_window_s === 0 ? 'Off' : `±${prefs.snap_window_s} s`}</span>
             </div>

@@ -1,13 +1,20 @@
-import { PointerEvent, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Ear, AlertTriangle, Loader2 } from 'lucide-react'
+import { PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { clsx } from 'clsx'
+import { ChevronLeft, ChevronRight, Ear, AlertTriangle, Loader2, Play } from 'lucide-react'
 import { api } from '../../services/api'
 import type { Track } from '../../types/job'
 import { formatTime } from '../../lib/time'
-import { columnPeaks, prepareCanvas, tokenColor } from '../../lib/waveform'
+import { SEGMENT_TOKENS, drawBars, prepareCanvas, segmentAt, tokenColor } from '../../lib/waveform'
+import { cutNear, cutsInView, followPlayhead, windowAround, type Cut } from '../../lib/closeup'
 import { useElementWidth } from '../../hooks/useElementWidth'
 
-const HALF_WINDOW = 8
-const HEIGHT = 96
+const SEGMENT_TEXT = ['text-seg1', 'text-seg2', 'text-seg3', 'text-seg4']
+
+const HEIGHT = 84
+/** Room above the bars for the cut time labels. */
+const LABEL_SPACE = 18
+/** How close (in pixels) a press must be to a cut to drag it instead of seeking. */
+const GRAB_PX = 8
 
 interface Props {
   jobId: string
@@ -17,33 +24,67 @@ interface Props {
   cutNumber: number
   cutCount: number
   playhead: number | null
+  playing: boolean
   disabled: boolean
+  /** Move the cut at the start of tracks[index]. */
   onMoveCut: (index: number, time: number) => void
   onHearCut: (track: Track) => void
+  onSeek: (time: number) => void
   onPrevCut: () => void
   onNextCut: () => void
   onNextToCheck: (() => void) | null
 }
 
-/** Zoomed view of ±8 s around one cut, for placing it exactly. */
+/**
+ * Zoomed 16 s view for placing cuts exactly.
+ *
+ * Paused, it centres on the selected cut. Playing, it follows the playhead and
+ * pages forward, so you can watch a song run up to and across the next cut.
+ * Every cut in view is drawn with its time; drag one to move it, click anywhere
+ * else to play from there.
+ */
 export default function CutCloseUp(p: Props) {
   const track = p.tracks[p.index]
   const previous = p.tracks[p.index - 1]
   const [wrapRef, width] = useElementWidth<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [center, setCenter] = useState(track.start)
   const [view, setView] = useState<{ start: number; end: number; peaks: number[] } | null>(null)
   const [loading, setLoading] = useState(false)
-  const [dragTime, setDragTime] = useState<number | null>(null)
-  const cut = dragTime ?? track.start
+  const [drag, setDrag] = useState<Cut | null>(null)
+  const [hoverCut, setHoverCut] = useState(false)
+  const following = p.playing && p.playhead !== null
+  const timeOf = (c: Cut) => (drag?.index === c.index ? drag.time : c.time)
 
-  // Re-centre the close-up when the selected cut changes, or when the cut moves near the edge.
-  const center = view && cut > view.start + 2 && cut < view.end - 2 ? null : cut
+  // The window asked for. Decisions use it, not the last one loaded, so a slow
+  // fetch never triggers a new request on every frame.
+  const requested = windowAround(center)
+
+  // Paused: centre on the selected cut when another one is chosen, or when it's moved near the edge.
+  // Pausing itself leaves the view where it is.
+  const cut = drag?.index === p.index ? drag.time : track.start
   useEffect(() => {
-    if (center === null || !width) return
+    if (!following) setCenter(track.start)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.id])
+  useEffect(() => {
+    if (!following && (cut < requested.start + 2 || cut > requested.end - 2)) setCenter(cut)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cut])
+
+  // Playing: follow the playhead, paging forward before it reaches the edge.
+  useEffect(() => {
+    if (!following) return
+    const next = followPlayhead(requested, p.playhead!)
+    if (next !== null) setCenter(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [following, p.playhead, center])
+
+  useEffect(() => {
+    if (!width) return
     let cancelled = false
     setLoading(true)
-    const start = Math.max(0, center - HALF_WINDOW)
-    const end = center + HALF_WINDOW
+    const { start, end } = windowAround(center)
     api
       .windowPeaks(p.jobId, track.source_id, start, end, Math.min(4000, width))
       .then((data) => !cancelled && setView(data))
@@ -53,47 +94,69 @@ export default function CutCloseUp(p: Props) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center === null ? null : Math.round(center * 10), track.id, width])
+  }, [Math.round(center * 10), track.source_id, width])
 
+  const cuts = useMemo(() => (view ? cutsInView(p.tracks, track.source_id, view) : []), [p.tracks, track.source_id, view])
+
+  // Waveform: rounded bars in the colour of their song, matching the overview.
+  // Bars already played are bright, the rest dimmed, so progress reads at a glance.
+  const playhead = p.playhead
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !width || !view) return
     const ctx = prepareCanvas(canvas, width, HEIGHT)
-    const cols = columnPeaks(view.peaks, width)
     const span = view.end - view.start
-    const cutX = ((cut - view.start) / span) * width
-    const before = tokenColor('--seg1', 0.85)
-    const after = tokenColor('--seg2', 0.85)
-    const mid = HEIGHT / 2
-    for (let x = 0; x < width; x++) {
-      ctx.fillStyle = x < cutX ? before : after
-      const h = Math.max(1, cols[x] * (HEIGHT - 8))
-      ctx.fillRect(x, mid - h / 2, 1, h)
-    }
-    // One-second grid
+    const shown = p.tracks.map((t, i) => (drag && i === drag.index ? { ...t, start: drag.time } : drag && i === drag.index - 1 ? { ...t, end: drag.time } : t))
+    // [played, unplayed] colour per segment, and for excluded songs.
+    const colors = SEGMENT_TOKENS.map((t) => [tokenColor(t, 0.95), tokenColor(t, 0.5)])
+    const excluded = SEGMENT_TOKENS.map((t) => [tokenColor(t, 0.3), tokenColor(t, 0.18)])
+    const outside = tokenColor('--faint', 0.3)
+    const played = playhead !== null && playhead >= view.start ? playhead : -Infinity
+    drawBars(ctx, view.peaks, width, HEIGHT, {
+      bar: 3,
+      gap: 2,
+      top: LABEL_SPACE,
+      bottom: 6,
+      fill: (at) => {
+        const t = view.start + at * span
+        const i = segmentAt(shown, t)
+        if (i === -1 || shown[i].source_id !== track.source_id) return outside
+        return (shown[i].include ? colors : excluded)[i % colors.length][t <= played ? 0 : 1]
+      },
+    })
+    // One-second ticks
     ctx.fillStyle = tokenColor('--line')
     for (let s = Math.ceil(view.start); s < view.end; s++) {
-      ctx.fillRect(Math.round(((s - view.start) / span) * width), HEIGHT - 6, 1, 6)
+      ctx.fillRect(Math.round(((s - view.start) / span) * width), HEIGHT - 4, 1, 4)
     }
-  }, [view, width, cut])
+  }, [view, width, p.tracks, drag, track.source_id, playhead])
 
   const toTime = (clientX: number) => {
     const rect = wrapRef.current!.getBoundingClientRect()
     if (!view) return track.start
     return view.start + ((clientX - rect.left) / rect.width) * (view.end - view.start)
   }
+  const grabTolerance = () => (view && width ? (GRAB_PX / width) * (view.end - view.start) : 0)
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (p.disabled || !view) return
-    e.currentTarget.setPointerCapture(e.pointerId)
-    setDragTime(toTime(e.clientX))
+    if (!view || e.button !== 0) return
+    const t = toTime(e.clientX)
+    const grabbed = p.disabled ? null : cutNear(cuts, t, grabTolerance())
+    if (grabbed) {
+      e.currentTarget.setPointerCapture(e.pointerId)
+      setDrag({ index: grabbed.index, time: t })
+    } else {
+      p.onSeek(t)
+    }
   }
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (dragTime !== null) setDragTime(toTime(e.clientX))
+    const t = toTime(e.clientX)
+    if (drag) setDrag({ ...drag, time: t })
+    else setHoverCut(!p.disabled && cutNear(cuts, t, grabTolerance()) !== null)
   }
   const onPointerUp = () => {
-    if (dragTime !== null) p.onMoveCut(p.index, dragTime)
-    setDragTime(null)
+    if (drag) p.onMoveCut(drag.index, drag.time)
+    setDrag(null)
   }
 
   const pct = (t: number) => (view ? `${((t - view.start) / (view.end - view.start)) * 100}%` : '50%')
@@ -114,9 +177,9 @@ export default function CutCloseUp(p: Props) {
         <div className="flex-1 min-w-0 text-sm">
           <p className="truncate">
             <span className="text-muted">Cut {p.cutNumber} of {p.cutCount} · </span>
-            <span className="text-seg1">{previous?.title}</span>
+            <span className={SEGMENT_TEXT[(p.index - 1) % SEGMENT_TEXT.length]}>{previous?.title}</span>
             <span className="text-faint"> → </span>
-            <span className="text-seg2">{track.title}</span>
+            <span className={SEGMENT_TEXT[p.index % SEGMENT_TEXT.length]}>{track.title}</span>
           </p>
         </div>
         {lowConfidence && (
@@ -124,7 +187,12 @@ export default function CutCloseUp(p: Props) {
             <AlertTriangle size={12} aria-hidden="true" /> {checkReason}
           </span>
         )}
-        <span className="font-mono text-sm tnum shrink-0">{formatTime(cut)}</span>
+        {following && (
+          <span className="inline-flex items-center gap-1 text-xs text-accent font-mono tnum shrink-0" aria-live="off">
+            <Play size={11} aria-hidden="true" /> {formatTime(p.playhead!)}
+          </span>
+        )}
+        <span className="font-mono text-sm tnum shrink-0" title="Time of this cut">{formatTime(cut)}</span>
         <button className="btn-icon" onClick={p.onNextCut} disabled={p.cutNumber >= p.cutCount} aria-label="Next cut">
           <ChevronRight size={16} />
         </button>
@@ -132,14 +200,18 @@ export default function CutCloseUp(p: Props) {
 
       <div
         ref={wrapRef}
-        className="relative cursor-ew-resize select-none touch-none rounded bg-surface overflow-hidden"
+        className={clsx(
+          'relative select-none touch-none rounded bg-surface overflow-hidden',
+          drag || hoverCut ? 'cursor-ew-resize' : 'cursor-pointer',
+        )}
         style={{ height: HEIGHT }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={() => setDragTime(null)}
+        onPointerLeave={() => setHoverCut(false)}
+        onPointerCancel={() => setDrag(null)}
         role="img"
-        aria-label={`Waveform around the cut at ${formatTime(cut)}. Drag to move the cut.`}
+        aria-label={`Waveform from ${formatTime(view?.start ?? 0)} to ${formatTime(view?.end ?? 0)} with ${cuts.length} cut${cuts.length === 1 ? '' : 's'}. Click to play from a point, drag a cut to move it.`}
       >
         <canvas ref={canvasRef} className="absolute inset-0" aria-hidden="true" />
         {loading && !view && (
@@ -149,11 +221,31 @@ export default function CutCloseUp(p: Props) {
         )}
         {view && (
           <>
-            <div className="absolute top-0 bottom-0 w-0.5 -ml-px bg-ink pointer-events-none" style={{ left: pct(cut) }} aria-hidden="true">
-              <span className="absolute -left-1 top-0 w-2.5 h-2.5 rounded-sm rotate-45 bg-ink" />
-            </div>
+            {cuts.map((c) => {
+              const selected = c.index === p.index
+              const time = timeOf(c)
+              return (
+                <div
+                  key={p.tracks[c.index].id}
+                  className={clsx('absolute top-0 bottom-0 -ml-px pointer-events-none', selected ? 'w-0.5 bg-ink' : 'w-px bg-ink/50')}
+                  style={{ left: pct(time) }}
+                  aria-hidden="true"
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0 -translate-x-1/2 px-1.5 rounded-full text-[10px] leading-4 font-mono tnum whitespace-nowrap',
+                      selected ? 'bg-ink text-canvas' : 'bg-raised text-muted',
+                    )}
+                  >
+                    {formatTime(time)}
+                  </span>
+                </div>
+              )
+            })}
             {p.playhead !== null && p.playhead >= view.start && p.playhead <= view.end && (
-              <div className="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none" style={{ left: pct(p.playhead) }} aria-hidden="true" />
+              <div className="absolute bottom-0 w-0.5 -ml-px bg-accent pointer-events-none" style={{ left: pct(p.playhead), top: LABEL_SPACE }} aria-hidden="true">
+                <span className="absolute -left-[3px] -top-1 w-2 h-2 rounded-full bg-accent" />
+              </div>
             )}
           </>
         )}
@@ -176,6 +268,7 @@ export default function CutCloseUp(p: Props) {
             </button>
           ))}
         </div>
+        <span className="text-xs text-faint">{following ? 'Following playback' : 'Click to play from a point · drag a cut to move it'}</span>
         <div className="flex-1" />
         {p.onNextToCheck && (
           <button className="btn-ghost h-8 text-warn hover:text-warn" onClick={p.onNextToCheck}>
