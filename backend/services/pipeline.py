@@ -16,7 +16,8 @@ from config import load_preferences, settings
 from core.db import get_store
 from core.websocket_manager import manager as ws
 from services import (
-    audio_analysis, audio_profile, exporter, identify, library, local_media, loudness, name_cleanup, song_index,
+    audio_analysis, audio_profile, exporter, identify, library, local_media, loudness, name_cleanup, playlist,
+    song_index,
     tracklist, youtube,
 )
 
@@ -357,6 +358,8 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
         return
     # Songs saved last time that may be overwritten (only when the user chose to replace them).
     previous = [o["path"] for o in job.get("outputs") or []] if replace_previous else []
+    if replace_previous and job.get("playlist"):
+        previous.append(job["playlist"])
     replaceable = frozenset(library.same_file_key(p) for p in previous)
     try:
         async with _export_slots:
@@ -366,6 +369,7 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             collection = job["collection"]
             root = job.get("destination") or prefs.library_dir
             outputs: list[dict[str, Any]] = []
+            entries: list[dict[str, Any]] = []  # for the playlist
             await _update(job_id, status="exporting", progress=0, message="Saving songs", error=None, outputs=[])
 
             # Pass 1 (only when needed): trim silent edges and measure loudness. The
@@ -425,11 +429,19 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                     replaygain,
                 )
                 outputs.append({"track_id": track["id"], "title": track["title"], "path": dest})
+                entries.append({
+                    "path": dest, "title": track["title"], "duration": end - start,
+                    "artist": track.get("artist") or album_artist,
+                })
 
             folder = os.path.commonpath([os.path.dirname(o["path"]) for o in outputs]) if outputs else root
             await asyncio.to_thread(song_index.get_index().add_paths, [o["path"] for o in outputs])
+            playlist_file = ""
+            if prefs.write_playlist and len(outputs) > 1:
+                target = library.unique_path(playlist.playlist_path(folder, collection), replaceable)
+                playlist_file = await asyncio.to_thread(playlist.write, target, entries)
             # Old songs this save didn't overwrite (renamed or left out) go to the Recycle Bin.
-            kept = {library.same_file_key(o["path"]) for o in outputs}
+            kept = {library.same_file_key(o["path"]) for o in outputs} | {library.same_file_key(playlist_file)}
             stale = [p for p in previous if library.same_file_key(p) not in kept and os.path.isfile(p)]
             if stale:
                 trashed = await asyncio.to_thread(_trash, stale)
@@ -438,7 +450,7 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             if not prefs.keep_downloads:
                 sources_after = await remove_downloads(job_id, job["sources"])
             await _update(
-                job_id, status="completed", progress=100, outputs=outputs, sources=sources_after,
+                job_id, status="completed", progress=100, outputs=outputs, sources=sources_after, playlist=playlist_file,
                 message=f"Saved {len(outputs)} song{'s' if len(outputs) != 1 else ''} to {folder}",
             )
     except youtube.Cancelled:

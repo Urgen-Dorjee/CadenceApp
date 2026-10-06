@@ -40,6 +40,8 @@ _JSON_FIELDS = ("collection", "sources", "tracks", "outputs")
 _ADDED_COLUMNS = {
     # Folder chosen for this split only; empty means the library folder.
     "destination": "TEXT NOT NULL DEFAULT ''",
+    # The .m3u8 playlist written by the last save, so saving again can replace it.
+    "playlist": "TEXT NOT NULL DEFAULT ''",
 }
 
 

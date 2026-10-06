@@ -7,6 +7,7 @@ const prefs: Preferences = {
   save_mode: 'library',
   open_when_done: true,
   keep_downloads: true,
+  write_playlist: true,
   identify_songs: false,
   acoustid_key: '',
   tidy_names: false,

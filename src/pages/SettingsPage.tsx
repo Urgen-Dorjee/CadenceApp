@@ -328,6 +328,13 @@ export default function SettingsPage() {
           >
             <Switch id="keep-downloads" checked={prefs.keep_downloads} onChange={(v) => save({ keep_downloads: v })} />
           </Row>
+          <Row
+            title="Playlist file"
+            hint="Writes an .m3u8 playlist next to each album or collection, so other players and phones keep the song order."
+            htmlFor="write-playlist"
+          >
+            <Switch id="write-playlist" checked={prefs.write_playlist} onChange={(v) => save({ write_playlist: v })} />
+          </Row>
 
           <Row
             title="Downloaded audio"

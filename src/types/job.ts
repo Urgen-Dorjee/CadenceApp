@@ -67,6 +67,8 @@ export interface Job {
   tracks: Track[]
   outputs: Output[]
   destination: string
+  /** The .m3u8 playlist written by the last save, if any. */
+  playlist?: string
   created_at: number
   updated_at: number
 }
@@ -76,6 +78,7 @@ export interface Preferences {
   save_mode: 'library' | 'ask'
   open_when_done: boolean
   keep_downloads: boolean
+  write_playlist: boolean
   identify_songs: boolean
   acoustid_key: string
   tidy_names: boolean
