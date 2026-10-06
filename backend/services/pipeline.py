@@ -16,7 +16,8 @@ from config import load_preferences, settings
 from core.db import get_store
 from core.websocket_manager import manager as ws
 from services import (
-    audio_analysis, audio_profile, cover, exporter, identify, library, local_media, loudness, name_cleanup, playlist,
+    audio_analysis, audio_profile, cover, exporter, identify, library, local_media, loudness, lyrics, name_cleanup,
+    playlist,
     song_index,
     tracklist, youtube,
 )
@@ -370,6 +371,8 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             root = job.get("destination") or prefs.library_dir
             outputs: list[dict[str, Any]] = []
             entries: list[dict[str, Any]] = []  # for the playlist
+            with_lyrics = 0
+            lyrics_offline = False
             await _update(job_id, status="exporting", progress=0, message="Saving songs", error=None, outputs=[])
 
             # Pass 1 (only when needed): trim silent edges and measure loudness. The
@@ -442,6 +445,22 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                     await cover_for(source),
                     replaygain,
                 )
+                if prefs.lyrics != "off" and not lyrics_offline:
+                    try:
+                        found = await asyncio.to_thread(
+                            lyrics.fetch, track["title"], track.get("artist") or album_artist,
+                            collection.get("album") or "", end - start,
+                        )
+                    except OSError as e:  # offline or LRCLIB down: save the rest without asking again
+                        log.warning("Lyrics lookup failed: %s", e)
+                        lyrics_offline, found = True, None
+                    if found:
+                        await asyncio.to_thread(lyrics.embed, dest, prefs.audio_format, found["synced"] or found["plain"])
+                        lrc = lyrics.lrc_path(dest)
+                        mine = library.same_file_key(lrc) in replaceable or library.same_file_key(dest) in replaceable
+                        if prefs.lyrics == "lrc" and found["synced"] and (mine or not os.path.exists(lrc)):
+                            await asyncio.to_thread(lyrics.write_lrc, dest, found["synced"])
+                        with_lyrics += 1
                 outputs.append({"track_id": track["id"], "title": track["title"], "path": dest})
                 entries.append({
                     "path": dest, "title": track["title"], "duration": end - start,
@@ -457,6 +476,9 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             # Old songs this save didn't overwrite (renamed or left out) go to the Recycle Bin.
             kept = {library.same_file_key(o["path"]) for o in outputs} | {library.same_file_key(playlist_file)}
             stale = [p for p in previous if library.same_file_key(p) not in kept and os.path.isfile(p)]
+            # A replaced song's .lrc goes with it (only ones Cadence wrote: next to its own songs).
+            stale += [lyrics.lrc_path(p) for p in stale if p.lower().endswith(tuple(f".{f}" for f in ("mp3", "m4a", "flac", "opus")))
+                      and os.path.isfile(lyrics.lrc_path(p)) and library.same_file_key(lyrics.lrc_path(p)) not in kept]
             if stale:
                 trashed = await asyncio.to_thread(_trash, stale)
                 await asyncio.to_thread(song_index.get_index().remove_paths, trashed)
@@ -465,7 +487,9 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                 sources_after = await remove_downloads(job_id, job["sources"])
             await _update(
                 job_id, status="completed", progress=100, outputs=outputs, sources=sources_after, playlist=playlist_file,
-                message=f"Saved {len(outputs)} song{'s' if len(outputs) != 1 else ''} to {folder}",
+                message=f"Saved {len(outputs)} song{'s' if len(outputs) != 1 else ''} to {folder}"
+                + (f" (lyrics for {with_lyrics})" if prefs.lyrics != "off" and not lyrics_offline else "")
+                + (" (lyrics skipped: couldn't reach LRCLIB)" if lyrics_offline else ""),
             )
     except youtube.Cancelled:
         await _update(job_id, status="review", progress=0, message="Export cancelled. Songs already saved were kept.")

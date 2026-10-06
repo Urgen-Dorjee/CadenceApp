@@ -132,6 +132,7 @@ Saving options (**Settings → Saving songs**):
 - **Where to save:** always your library folder, or ask for a folder each time.
 - **This split only:** "Change folder" on the review screen saves one split somewhere else.
 - **Folder layout:** a preset per collection type (e.g. `Singer › Song`, `Movie - 01 - Song`) or your own template using `{artist}`, `{album}`, `{collection}`, `{year}`, `{year_suffix}`, `{track:02}` and `{title}`.
+- **Lyrics** (off by default): looked up on [LRCLIB](https://lrclib.net), a free lyrics database, and embedded in the songs, optionally with synced `.lrc` files next to them. Only the title, singer, album and length are sent
 - **Cover art:** wide video thumbnails are cropped to a square album cover (can be turned off); **Change cover…** on the review screen uses your own image for a split
 - **Playlist file:** an `.m3u8` playlist next to each album or collection keeps the song order in other players (on by default)
 - **When saving finishes:** optionally show the songs in File Explorer.

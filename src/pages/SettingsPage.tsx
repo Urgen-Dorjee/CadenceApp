@@ -28,6 +28,12 @@ const FORMATS: { value: Preferences['audio_format']; label: string; note: string
   { value: 'flac', label: 'FLAC', note: 'Lossless, largest files' },
 ]
 
+const LYRICS: { value: Preferences['lyrics']; label: string; note: string }[] = [
+  { value: 'off', label: 'Off', note: 'No lyrics' },
+  { value: 'embed', label: 'In the songs', note: 'Shown by phones and most players' },
+  { value: 'lrc', label: 'In the songs + .lrc', note: 'Also synced .lrc files that scroll along' },
+]
+
 const LOUDNESS: { value: Preferences['loudness']; label: string; note: string }[] = [
   { value: 'off', label: 'Off', note: 'Songs keep their own volume' },
   { value: 'tags', label: 'ReplayGain tags', note: 'Recommended. Players even out the volume; the audio is untouched' },
@@ -327,6 +333,23 @@ export default function SettingsPage() {
             htmlFor="keep-downloads"
           >
             <Switch id="keep-downloads" checked={prefs.keep_downloads} onChange={(v) => save({ keep_downloads: v })} />
+          </Row>
+          <Row
+            title="Lyrics"
+            hint={
+              <>
+                Looked up on{' '}
+                <a href="https://lrclib.net" target="_blank" rel="noreferrer" className="text-accent hover:underline">LRCLIB</a>,
+                a free lyrics database, when saving. Only the song's title, singer, album and length are sent.
+              </>
+            }
+            stack
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2" role="radiogroup" aria-label="Lyrics">
+              {LYRICS.map((l) => (
+                <Choice key={l.value} selected={prefs.lyrics === l.value} onClick={() => save({ lyrics: l.value })} title={l.label} note={l.note} />
+              ))}
+            </div>
           </Row>
           <Row
             title="Square cover art"

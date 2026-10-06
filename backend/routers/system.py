@@ -41,6 +41,8 @@ async def update_preferences(prefs: Preferences):
         raise HTTPException(status_code=422, detail="Edge fade must be between 0 and 200 ms")
     if not 0 <= prefs.snap_window_s <= 10:
         raise HTTPException(status_code=422, detail="Snap window must be between 0 and 10 seconds")
+    if prefs.lyrics not in ("off", "embed", "lrc"):
+        raise HTTPException(status_code=422, detail="Lyrics must be off, embed or lrc")
     if prefs.loudness not in ("off", "tags", "normalize"):
         raise HTTPException(status_code=422, detail="Loudness must be off, tags or normalize")
     if not -30 <= prefs.loudness_target <= -5:

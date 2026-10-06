@@ -82,6 +82,7 @@ export interface Preferences {
   keep_downloads: boolean
   write_playlist: boolean
   square_cover: boolean
+  lyrics: 'off' | 'embed' | 'lrc'
   identify_songs: boolean
   acoustid_key: string
   tidy_names: boolean

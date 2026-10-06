@@ -70,6 +70,9 @@ class Preferences(BaseModel):
     save_mode: str = "library"
     # Show the saved songs in Explorer when saving finishes.
     open_when_done: bool = True
+    # Lyrics from LRCLIB when saving: "off", "embed" (in the song's tags) or "lrc"
+    # (embedded, plus a synced .lrc file next to each song).
+    lyrics: str = "off"
     # Crop wide video thumbnails to a square cover, like an album's.
     square_cover: bool = True
     # Write an .m3u8 playlist next to the songs of each album or collection.
