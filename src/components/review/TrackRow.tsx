@@ -27,6 +27,7 @@ function TrackRow(p: Props) {
   const { track, index } = p
   return (
     <tr
+      data-track-id={track.id}
       className={clsx(
         'group border-b border-line last:border-0 transition-colors',
         p.isSelected ? 'bg-raised' : 'hover:bg-raised/50',

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic } from 'lucide-react'
+import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic, Undo2, Redo2, Keyboard } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { useJobsStore } from '../stores/jobsStore'
@@ -10,6 +10,7 @@ import { formatTime, formatDuration } from '../lib/time'
 import { canMergeWithNext, mergeWithNext, moveEnd, moveStart, needsCheck, needsName, splitAt, updateTrack } from '../lib/tracks'
 import { folderOf, previewPath } from '../lib/paths'
 import { cutForPlayingSong } from '../lib/closeup'
+import { canRedo, canUndo, record, redo, startHistory, undo, type History } from '../lib/history'
 import type { Collection, Track } from '../types/job'
 import { Thumbnail } from '../components/jobs/JobCard'
 import StatusPill from '../components/ui/StatusPill'
@@ -19,8 +20,20 @@ import CutCloseUp from '../components/review/CutCloseUp'
 import TrackRow from '../components/review/TrackRow'
 import CollectionPanel from '../components/review/CollectionPanel'
 import TracklistDialog from '../components/review/TracklistDialog'
+import ShortcutsDialog from '../components/review/ShortcutsDialog'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
+
+/** Everything the review screen lets you change; undo and redo step through it. */
+interface Draft {
+  tracks: Track[]
+  collection: Collection
+  /** Folder for this split only; empty means the library folder. */
+  folder: string
+}
+
+const EMPTY_DRAFT: Draft = { tracks: [], collection: EMPTY_COLLECTION, folder: '' }
+const sameDraft = (a: Draft, b: Draft) => JSON.stringify(a) === JSON.stringify(b)
 
 export default function ReviewPage() {
   const { id = '' } = useParams()
@@ -28,27 +41,38 @@ export default function ReviewPage() {
   const [identifying, setIdentifying] = useState(false)
   const [tidying, setTidying] = useState(false)
   const [tracklistOpen, setTracklistOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const job = useJobsStore((s) => s.jobs[id])
   const loaded = useJobsStore((s) => s.loaded)
   const player = useAudioPlayer(id)
 
-  const [tracks, setTracks] = useState<Track[]>([])
-  const [collection, setCollection] = useState<Collection>(EMPTY_COLLECTION)
-  const [dirty, setDirty] = useState(false)
+  const [history, setHistory] = useState<History<Draft>>(() => startHistory(EMPTY_DRAFT))
+  const { tracks, collection, folder } = history.present
+  // What the backend has saved. "Save changes" shows while the draft differs from it,
+  // so undoing back to the saved state hides it again.
+  const [saved, setSaved] = useState<Draft>(EMPTY_DRAFT)
+  const dirty = useMemo(() => !sameDraft(history.present, saved), [history.present, saved])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const prefs = usePrefsStore((s) => s.prefs)
-  const [folder, setFolder] = useState('')
   const [busy, setBusy] = useState(false)
   const syncedStatus = useRef<string | null>(null)
+
+  /** Record a change. Changes with the same `key` in quick succession are one undo step. */
+  const change = useCallback((fn: (d: Draft) => Draft, key?: string) => setHistory((h) => record(h, fn(h.present), key)), [])
+  const setCollection = useCallback(
+    (patch: Partial<Collection>) => change((d) => ({ ...d, collection: { ...d.collection, ...patch } }), `collection-${Object.keys(patch).join()}`),
+    [change],
+  )
+  const setFolder = useCallback((value: string) => change((d) => ({ ...d, folder: value })), [change])
 
   // Load the job into the editable draft when it first arrives or finishes a stage.
   useEffect(() => {
     if (!job) return
     const editable = job.status === 'review' || job.status === 'completed'
     if (editable && syncedStatus.current !== job.status && !dirty) {
-      setTracks(job.tracks)
-      setCollection({ ...EMPTY_COLLECTION, ...job.collection })
-      setFolder(job.destination || '')
+      const draft = { tracks: job.tracks, collection: { ...EMPTY_COLLECTION, ...job.collection }, folder: job.destination || '' }
+      setHistory(startHistory(draft))
+      setSaved(draft)
     }
     syncedStatus.current = job.status
   }, [job, dirty])
@@ -70,17 +94,23 @@ export default function ReviewPage() {
   const flagged = tracks.filter(needsCheck).length
   const showArtist = collection.type !== 'artist'
 
-  const edit = useCallback((fn: (t: Track[]) => Track[]) => {
-    setTracks((prev) => fn(prev))
-    setDirty(true)
-  }, [])
+  const edit = useCallback(
+    (fn: (t: Track[]) => Track[], key?: string) => change((d) => ({ ...d, tracks: fn(d.tracks) }), key),
+    [change],
+  )
 
-  const onChange = useCallback((trackId: string, patch: Partial<Track>) => edit((t) => updateTrack(t, trackId, patch)), [edit])
-  const onStart = useCallback((index: number, time: number) => edit((t) => moveStart(t, index, time)), [edit])
+  const onChange = useCallback(
+    (trackId: string, patch: Partial<Track>) => edit((t) => updateTrack(t, trackId, patch), `track-${trackId}-${Object.keys(patch).join()}`),
+    [edit],
+  )
+  const onStart = useCallback(
+    (index: number, time: number) => edit((t) => moveStart(t, index, time), `start-${tracks[index]?.id}`),
+    [edit, tracks],
+  )
   const onEnd = useCallback(
     (index: number, time: number) => {
       const duration = sources.find((s) => s.id === tracks[index]?.source_id)?.duration ?? Infinity
-      edit((t) => moveEnd(t, index, time, duration))
+      edit((t) => moveEnd(t, index, time, duration), `end-${tracks[index]?.id}`)
     },
     [edit, sources, tracks],
   )
@@ -150,18 +180,85 @@ export default function ReviewPage() {
     edit(() => next)
   }
 
-  // Space plays or pauses when you're not typing.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement
-      if (e.code !== 'Space' || el.closest('input, textarea, button, select, [role="slider"]')) return
+  const selectSong = (index: number) => {
+    const track = tracks[Math.max(0, Math.min(tracks.length - 1, index))]
+    if (!track) return
+    setSelectedId(track.id)
+    document.querySelector(`[data-track-id="${track.id}"]`)?.scrollIntoView({ block: 'nearest' })
+  }
+
+  // Keyboard shortcuts (see ShortcutsDialog). The handler is replaced every render so it
+  // always sees the current songs; the listener itself is added once.
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  onKeyRef.current = (e: KeyboardEvent) => {
+    const el = e.target as HTMLElement
+    const typing = Boolean(el.closest('input:not([type=checkbox]):not([type=range]), textarea, select, [contenteditable="true"]'))
+    if (shortcutsOpen || tracklistOpen || exporting || el.closest('[role="dialog"]')) return
+    const key = e.key.toLowerCase()
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === 'z' || key === 'y')) {
+      if (typing) return // the field's own undo
       e.preventDefault()
-      const fallback = tracks[0]?.source_id
-      if (fallback) player.toggle(fallback)
+      setHistory((h) => (key === 'y' || e.shiftKey ? redo(h) : undo(h)))
+      return
     }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return
+    const closeUpTrack = closeUpCut !== -1 ? tracks[closeUpIndex] : null
+    const selected = selectedIndex !== -1 ? tracks[selectedIndex] : null
+    const handled = (() => {
+      switch (e.key) {
+        case ' ':
+          if (el.closest('button, [role="slider"]')) return false
+          if (tracks[0]) player.toggle(tracks[0].source_id)
+          return true
+        case 'ArrowLeft':
+        case 'ArrowRight':
+          if (!closeUpTrack || el.closest('[role="slider"]')) return false
+          onStart(closeUpIndex, closeUpTrack.start + (e.key === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 1 : 0.1))
+          return true
+        case '[':
+          goToCut(closeUpCut === -1 ? 0 : closeUpCut - 1)
+          return true
+        case ']':
+          goToCut(closeUpCut === -1 ? 0 : closeUpCut + 1)
+          return true
+        case 'ArrowUp':
+        case 'ArrowDown':
+          selectSong(selectedIndex === -1 ? 0 : selectedIndex + (e.key === 'ArrowDown' ? 1 : -1))
+          return true
+        case 'Enter':
+          if (!selected || el.closest('button, a')) return false
+          onPlay(selected)
+          return true
+        case '?':
+          setShortcutsOpen(true)
+          return true
+      }
+      switch (key) {
+        case 'h':
+          if (!closeUpTrack) return false
+          onPreviewCut(closeUpTrack)
+          return true
+        case 'x':
+          if (!selected) return false
+          onChange(selected.id, { include: !selected.include })
+          return true
+        case 's':
+          splitHere()
+          return true
+        case 'j':
+          if (!selected || !canMergeWithNext(tracks, selectedIndex)) return false
+          onMerge(selectedIndex)
+          return true
+      }
+      return false
+    })()
+    if (handled) e.preventDefault()
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => onKeyRef.current(e)
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [player, tracks])
+  }, [])
 
   const askOnSave = prefs?.save_mode === 'ask' && !folder
   const destination = useMemo(() => {
@@ -172,10 +269,7 @@ export default function ReviewPage() {
 
   const chooseFolder = async () => {
     const picked = await window.electronAPI?.selectFolder({ defaultPath: folder || prefs?.library_dir, title: 'Save this split to' })
-    if (picked) {
-      setFolder(picked)
-      setDirty(true)
-    }
+    if (picked) setFolder(picked)
   }
 
   const payload = (destinationOverride?: string) => ({ tracks, collection, destination: destinationOverride ?? folder })
@@ -189,7 +283,7 @@ export default function ReviewPage() {
       return
     }
     setIdentifying(true)
-    const before = tracks
+    const before = history.present
     try {
       const result = await api.identifyJob(id, payload())
       if (!result.named) {
@@ -204,7 +298,7 @@ export default function ReviewPage() {
             <button
               className="text-accent font-medium hover:underline"
               onClick={() => {
-                edit(() => before)
+                change(() => before)
                 toast.dismiss(t.id)
               }}
             >
@@ -228,12 +322,10 @@ export default function ReviewPage() {
       return
     }
     setTidying(true)
-    const before = { tracks, collection }
+    const before = history.present
     try {
       const result = await api.tidyNames(id, payload())
-      setTracks(result.tracks)
-      setCollection({ ...EMPTY_COLLECTION, ...result.collection })
-      setDirty(true)
+      change((d) => ({ ...d, tracks: result.tracks, collection: { ...EMPTY_COLLECTION, ...result.collection } }))
       toast.success(
         (t) => (
           <span className="flex items-center gap-3">
@@ -241,8 +333,7 @@ export default function ReviewPage() {
             <button
               className="text-accent font-medium hover:underline"
               onClick={() => {
-                setTracks(before.tracks)
-                setCollection(before.collection)
+                change(() => before)
                 toast.dismiss(t.id)
               }}
             >
@@ -261,13 +352,11 @@ export default function ReviewPage() {
 
   /** Replace the songs with a pasted tracklist. Throws so the dialog can show what's wrong. */
   const importTracklist = async (text: string) => {
-    const before = { tracks, collection, dirty }
+    const before = history.present
     const result = await api.importTracklist(id, text)
     if (player.playing && tracks[0]) player.toggle(tracks[0].source_id)
-    setTracks(result.tracks)
-    setCollection((c) => ({ ...c, ...result.collection }))
+    change((d) => ({ ...d, tracks: result.tracks, collection: { ...d.collection, ...result.collection } }))
     setSelectedId(null)
-    setDirty(true)
     const count = result.tracks.length
     toast.success(
       (t) => (
@@ -276,9 +365,7 @@ export default function ReviewPage() {
           <button
             className="text-accent font-medium hover:underline"
             onClick={() => {
-              setTracks(before.tracks)
-              setCollection(before.collection)
-              setDirty(before.dirty)
+              change(() => before)
               toast.dismiss(t.id)
             }}
           >
@@ -294,7 +381,7 @@ export default function ReviewPage() {
     setBusy(true)
     try {
       await api.saveReview(id, payload())
-      setDirty(false)
+      setSaved(history.present)
       toast.success('Changes saved')
     } catch (e) {
       toast.error((e as Error).message)
@@ -315,7 +402,7 @@ export default function ReviewPage() {
     try {
       player.playing && player.toggle(tracks[0].source_id)
       await api.exportJob(id, payload(target))
-      setDirty(false)
+      setSaved({ ...history.present, folder: target })
       syncedStatus.current = 'exporting'
     } catch (e) {
       toast.error((e as Error).message)
@@ -376,6 +463,12 @@ export default function ReviewPage() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
+            <button className="btn-icon" onClick={() => setHistory(undo)} disabled={!canUndo(history)} aria-label="Undo" title="Undo (Ctrl+Z)">
+              <Undo2 size={16} />
+            </button>
+            <button className="btn-icon" onClick={() => setHistory(redo)} disabled={!canRedo(history)} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+              <Redo2 size={16} />
+            </button>
             {dirty && (
               <button className="btn-ghost" onClick={save} disabled={busy}>
                 Save changes
@@ -424,18 +517,12 @@ export default function ReviewPage() {
 
         <CollectionPanel
           collection={collection}
-          onChange={(patch) => {
-            setCollection((c) => ({ ...c, ...patch }))
-            setDirty(true)
-          }}
+          onChange={setCollection}
           destination={destination}
           customFolder={Boolean(folder)}
           askOnSave={askOnSave}
           onChooseFolder={chooseFolder}
-          onResetFolder={() => {
-            setFolder('')
-            setDirty(true)
-          }}
+          onResetFolder={() => setFolder('')}
           disabled={exporting}
         />
 
@@ -585,8 +672,15 @@ export default function ReviewPage() {
             </table>
           </div>
           <TracklistDialog open={tracklistOpen} onOpenChange={setTracklistOpen} onImport={importTracklist} />
-          <p className="text-xs text-faint">
-            Space plays or pauses. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s). Songs that share a cut move together.
+          <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+          <p className="text-xs text-faint flex items-center gap-2 flex-wrap">
+            <span>
+              Space plays or pauses, ←/→ move the cut, Ctrl+Z undoes. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s).
+              Songs that share a cut move together.
+            </span>
+            <button className="inline-flex items-center gap-1 text-muted hover:text-ink" onClick={() => setShortcutsOpen(true)}>
+              <Keyboard size={13} aria-hidden="true" /> All shortcuts <kbd className="kbd">?</kbd>
+            </button>
           </p>
         </section>
       </div>

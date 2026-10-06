@@ -83,6 +83,8 @@ Start times (`0:00 Song`) and song lengths (`1. Song 4:12`, added up) are both u
 
 Nothing is saved until you review the result. Uncertain cuts and segments too short to be a song are flagged.
 
+The review screen is keyboard-friendly: **Space** plays, **←/→** move the cut (Shift for 1 s), **[ ]** jump between cuts, **H** plays the audio around a cut, **↑/↓** select songs, **X** includes or skips one, **S** splits at the playhead, **J** joins with the next song, and **Ctrl+Z / Ctrl+Shift+Z** undo and redo any change. Press **?** for the full list.
+
 ## Splitting files from your computer
 
 Click **Open a file…** on the New split screen, or drop a file onto it. Cadence finds the songs in this order:
