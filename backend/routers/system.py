@@ -77,11 +77,11 @@ def _existing_parent(path: str) -> str:
 
 
 def _downloads() -> list[tuple[dict, dict]]:
-    """(job, source) for every downloaded source audio file still on disk."""
+    """(job, source) for every downloaded source audio file still on disk. The user's own files don't count."""
     found = []
     for job in get_store().list():
         for source in job["sources"]:
-            if source.get("path") and os.path.isfile(source["path"]):
+            if not source.get("local") and source.get("path") and os.path.isfile(source["path"]):
                 found.append((job, source))
     return found
 

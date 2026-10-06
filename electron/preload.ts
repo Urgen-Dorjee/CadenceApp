@@ -1,8 +1,11 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getBackendInfo: () => ipcRenderer.invoke('backend:getInfo'),
   selectFolder: (options?: { defaultPath?: string; title?: string }) => ipcRenderer.invoke('dialog:openDir', options),
+  selectMediaFile: () => ipcRenderer.invoke('dialog:openMediaFile'),
+  // Full path of a file dropped on the window (File.path no longer exists in sandboxed renderers).
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
   setTheme: (theme: string) => ipcRenderer.invoke('theme:set', theme),
   onSystemThemeChange: (callback: () => void) => {
     const listener = () => callback()

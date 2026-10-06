@@ -85,7 +85,8 @@ export interface LibrarySong {
 export const api = {
   health: () => request<{ status: string; ffmpeg_available: boolean; yt_dlp_version: string }>('GET', '/api/health'),
   listJobs: () => request<Job[]>('GET', '/api/jobs'),
-  createJob: (url: string) => request<Job>('POST', '/api/jobs', { url }),
+  /** Start a split from a YouTube link or a file on this computer. */
+  createJob: (source: { url: string } | { path: string }) => request<Job>('POST', '/api/jobs', source),
   saveReview: (id: string, payload: ReviewPayload) => request<Job>('PUT', `/api/jobs/${id}`, payload),
   exportJob: (id: string, payload: ReviewPayload) => request<{ status: string }>('POST', `/api/jobs/${id}/export`, payload),
   identifyJob: (id: string, payload: ReviewPayload) => request<{ tracks: Track[]; named: number }>('POST', `/api/jobs/${id}/identify`, payload),

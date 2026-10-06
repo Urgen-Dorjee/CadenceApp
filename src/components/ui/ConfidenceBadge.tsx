@@ -10,6 +10,7 @@ const ORIGIN_LABEL: Record<TrackOrigin, string> = {
   single: 'Whole video',
   manual: 'Edited by you',
   pasted: 'From your tracklist',
+  cue: 'From the .cue file',
 }
 
 export default function ConfidenceBadge({ confidence, origin }: { confidence: number; origin: TrackOrigin }) {

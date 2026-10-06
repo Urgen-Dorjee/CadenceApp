@@ -15,7 +15,9 @@ from typing import Any
 from config import load_preferences, settings
 from core.db import get_store
 from core.websocket_manager import manager as ws
-from services import audio_analysis, audio_profile, exporter, identify, library, name_cleanup, song_index, tracklist, youtube
+from services import (
+    audio_analysis, audio_profile, exporter, identify, library, local_media, name_cleanup, song_index, tracklist, youtube,
+)
 
 log = logging.getLogger(__name__)
 
@@ -74,9 +76,15 @@ def cancel(job_id: str) -> bool:
 
 
 async def remove_downloads(job_id: str, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Delete downloaded source audio but keep thumbnails and waveforms. Returns updated sources."""
+    """Delete downloaded source audio but keep thumbnails and waveforms. Returns updated sources.
+
+    The user's own files (local sources) are never touched.
+    """
     updated = []
     for source in sources:
+        if source.get("local"):
+            updated.append(source)
+            continue
         path = source.get("path")
         if path and os.path.isfile(path):
             await asyncio.to_thread(os.remove, path)
@@ -114,6 +122,9 @@ async def _analyze(job_id: str) -> None:
     out_dir = job_dir(job_id)
     try:
         async with _analyze_slots:
+            if is_local(job["url"]):
+                await _analyze_local(job_id, job["url"], out_dir, loop)
+                return
             await _update(job_id, status="resolving", progress=2, message="Reading video details", error=None)
             info = await youtube.resolve(job["url"])
             _check_cancel(job_id)
@@ -127,6 +138,55 @@ async def _analyze(job_id: str) -> None:
     except Exception as e:  # noqa: BLE001 - shown to the user, full trace in the log
         log.exception("Analysis failed for job %s", job_id)
         await _update(job_id, status="failed", error=_friendly_error(e), message="")
+
+
+def is_local(url: str) -> bool:
+    """Jobs for a file on this computer store its full path where a link would be."""
+    return os.path.isabs(url) and not url.lower().startswith(("http://", "https://"))
+
+
+async def _analyze_local(job_id: str, path: str, out_dir: str, loop: asyncio.AbstractEventLoop) -> None:
+    if not os.path.isfile(path):
+        raise local_media.LocalFileError("The file is no longer there. It may have been moved, renamed or deleted.")
+    await _update(job_id, status="analyzing", progress=2, message="Reading the file", error=None)
+    info = await asyncio.to_thread(local_media.probe, path)
+    duration = info["duration"]
+    sid = local_media.source_id(path)
+    title = os.path.splitext(os.path.basename(path))[0]
+    await _update(job_id, title=title, progress=4)
+    source = {
+        "id": sid, "title": title, "url": "", "duration": duration, "path": path, "local": True, "preview_path": "",
+        "thumbnail": await asyncio.to_thread(local_media.extract_cover, path, out_dir, info),
+        "uploader": info["artist"], "description": info["comment"],
+    }
+
+    # Songs from a .cue sheet next to the file, else from chapters inside it.
+    tracks: list[dict[str, Any]] = []
+    hint = {"artist": info["artist"], "album": info["album"], "year": info["year"]}
+    cue = local_media.find_cue(path)
+    if cue:
+        try:
+            parsed = tracklist.parse_pasted(await asyncio.to_thread(local_media.read_text, cue), duration)
+            tracks = tracklist.tracks_from_pasted(parsed, duration, sid, origin="cue")
+            hint = {k: parsed[k] or hint[k] for k in hint}
+        except (OSError, tracklist.TracklistError) as e:
+            log.warning("Ignoring cue sheet %s: %s", cue, e)
+    if not tracks:
+        tracks = tracklist.tracks_from_chapters(info["chapters"], duration, sid)
+    _check_cancel(job_id)
+
+    base = 5.0
+    if local_media.needs_preview(path):
+        await _update(job_id, progress=base, message="Preparing audio for playback")
+        try:
+            source["preview_path"] = await asyncio.to_thread(
+                local_media.make_preview, path, out_dir, duration,
+                _Progress(job_id, loop, base, 30, "Preparing audio for playback"), lambda: _cancelled(job_id),
+            )
+        except InterruptedError as e:
+            raise youtube.Cancelled() from e
+        base = 35.0
+    await _find_songs(job_id, loop, out_dir, source, tracks, title, info["artist"], base, hint)
 
 
 async def _analyze_video(job_id: str, info: dict[str, Any], out_dir: str, loop: asyncio.AbstractEventLoop) -> None:
@@ -155,22 +215,37 @@ async def _analyze_video(job_id: str, info: dict[str, Any], out_dir: str, loop: 
         "description": info.get("description") or "",
     }
 
+    await _find_songs(
+        job_id, loop, out_dir, source, tracks, title, info.get("uploader") or info.get("channel") or "", 80.0,
+    )
+
+
+async def _find_songs(
+    job_id: str, loop: asyncio.AbstractEventLoop, out_dir: str, source: dict[str, Any], tracks: list[dict[str, Any]],
+    title: str, uploader: str, base: float, hint: dict[str, str] | None = None,
+) -> None:
+    """Shared by videos and local files: read the waveform, find or refine the songs, name them, then review.
+
+    `tracks` is the tracklist found so far ([] to listen for the songs). `base` is
+    where progress stands. `hint` holds album details from tags or a cue sheet.
+    """
     prefs = load_preferences()
-    await _update(job_id, status="analyzing", progress=80, message="Reading the waveform")
+    sid, audio_path, duration = source["id"], source["path"], source["duration"]
+    await _update(job_id, status="analyzing", progress=base, message="Reading the waveform")
     try:
         profile = await asyncio.to_thread(
             audio_profile.build_profile, audio_path, duration,
-            _Progress(job_id, loop, 80, 12, "Reading the waveform"), lambda: _cancelled(job_id),
+            _Progress(job_id, loop, base, max(1.0, 92 - base), "Reading the waveform"), lambda: _cancelled(job_id),
         )
     except InterruptedError as e:
         raise youtube.Cancelled() from e
-    audio_profile.save_peaks(out_dir, info["id"], profile)
+    audio_profile.save_peaks(out_dir, sid, profile)
     duration = duration or profile.duration
     source["duration"] = duration
 
     if not tracks:
         await _update(job_id, progress=93, message="No tracklist found. Listening for where songs change")
-        tracks = audio_analysis.tracks_from_profile(profile, info["id"])
+        tracks = audio_analysis.tracks_from_profile(profile, sid)
     else:
         await _update(job_id, progress=93, message="Fine-tuning cut points")
     if tracks:
@@ -183,11 +258,17 @@ async def _analyze_video(job_id: str, info: dict[str, Any], out_dir: str, loop: 
         async def progress(i: int, total: int) -> None:
             await _update(job_id, progress=96, message=f"Identifying songs {i + 1} of {total}")
         try:
-            await identify.identify_tracks(tracks, {info["id"]: source}, prefs.acoustid_key, on_progress=progress)
+            await identify.identify_tracks(tracks, {sid: source}, prefs.acoustid_key, on_progress=progress)
         except identify.IdentifyError as e:
             log.warning("Song identification skipped: %s", e)
 
-    collection = tracklist.classify_collection(title, len(tracks), info.get("uploader") or info.get("channel") or "")
+    collection = tracklist.classify_collection(title, len(tracks), uploader)
+    if hint and hint.get("album") and len(tracks) > 1:
+        collection.update(type="album", name=hint["album"], album=hint["album"], confidence=0.8)
+    if hint and hint.get("artist") and not collection.get("artist"):
+        collection["artist"] = hint["artist"]
+    if hint and hint.get("year") and not collection.get("year"):
+        collection["year"] = hint["year"]
     if collection["type"] == "single" and tracks:
         tracks[0]["title"] = tracklist.clean_title(title)
 

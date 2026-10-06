@@ -5,12 +5,12 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
 from config import load_preferences
-from services import audio_analysis, audio_profile, identify, name_cleanup, pipeline, tracklist
+from services import audio_analysis, audio_profile, identify, local_media, name_cleanup, pipeline, tracklist
 
 router = APIRouter()
 
@@ -18,15 +18,37 @@ _YOUTUBE_RE = re.compile(r"^https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu
 
 
 class CreateJob(BaseModel):
-    url: str
+    """A YouTube link, or the full path of an audio or video file on this computer."""
+
+    url: str = ""
+    path: str = Field(default="", max_length=1000)
 
     @field_validator("url")
     @classmethod
     def youtube_only(cls, v: str) -> str:
         v = v.strip()
-        if not _YOUTUBE_RE.match(v):
+        if v and not _YOUTUBE_RE.match(v):
             raise ValueError("Paste a YouTube video or playlist link.")
         return v
+
+    @field_validator("path")
+    @classmethod
+    def usable_file(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return v
+        if not os.path.isabs(v) or not os.path.isfile(v):
+            raise ValueError("That file couldn't be found.")
+        if not local_media.is_supported(v):
+            ext = os.path.splitext(v)[1] or "this kind of file"
+            raise ValueError(f"Cadence can't split {ext} files. Use an audio or video file such as MP3, FLAC, M4A or MP4.")
+        return os.path.abspath(v)
+
+    @model_validator(mode="after")
+    def one_source(self) -> "CreateJob":
+        if bool(self.url) == bool(self.path):
+            raise ValueError("Paste a YouTube link or choose a file.")
+        return self
 
 
 class TrackIn(BaseModel):
@@ -102,7 +124,7 @@ async def list_jobs():
 
 @router.post("/jobs", status_code=201)
 async def create_job(body: CreateJob):
-    job = get_store().create(body.url)
+    job = get_store().create(body.url or body.path)
     await ws.send_job(job)
     pipeline.start_analysis(job["id"])
     return job
@@ -243,6 +265,13 @@ def _serve_work_file(job_id: str, path: str | None) -> FileResponse:
 async def source_audio(job_id: str, source_id: str):
     job = _get_job(job_id)
     source = next((s for s in job["sources"] if s["id"] == source_id), None)
+    if source and source.get("local"):
+        # The user's own file: play the copy made for playback, or the file itself if it plays as is.
+        if source.get("preview_path"):
+            return _serve_work_file(job_id, source["preview_path"])
+        if source.get("path") and os.path.isfile(source["path"]) and not local_media.needs_preview(source["path"]):
+            return FileResponse(source["path"])
+        raise HTTPException(status_code=404, detail="The file is no longer there.")
     return _serve_work_file(job_id, source and source.get("path"))
 
 

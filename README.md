@@ -35,6 +35,7 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 ## Features
 
 - **One link in, an album out.** Works with single videos (jukeboxes, full albums, mixes) and playlists.
+- **Your own files too.** Open or drop an audio or video file (MP3, FLAC, M4A, WAV, MKV, MP4…). Songs are cut straight from the original, which is never changed or deleted.
 - **Finds song boundaries automatically** from chapters, the description, top comments or, as a last resort, the audio itself.
 - **Clean, exact cuts.** Each cut moves to the real gap between songs, is sample-accurate and gets a short fade so there's no click.
 - **Review before saving.** Waveform overview, per-cut close-ups, play any song, nudge cuts by 0.1 s, split at the playhead, join songs, include or skip songs.
@@ -79,6 +80,16 @@ If YouTube has no tracklist, or a wrong one, click **Tracklist** on the review s
 Start times (`0:00 Song`) and song lengths (`1. Song 4:12`, added up) are both understood, or open a `.cue` file, which also brings singers, album and year. Cuts are still moved to the real gaps, and the change can be undone.
 
 Nothing is saved until you review the result. Uncertain cuts and segments too short to be a song are flagged.
+
+## Splitting files from your computer
+
+Click **Open a file…** on the New split screen, or drop a file onto it. Cadence finds the songs in this order:
+
+1. A `.cue` sheet with the same name next to the file (`Album.flac` + `Album.cue`), which also brings singers, album and year
+2. Chapters inside the file (MKV, MP4, M4B)
+3. The audio itself, as for YouTube videos
+
+Songs are cut from the original file, so there's no extra quality loss. Files the built-in player can't play (most video formats, WMA, APE) get a small playback copy in the job's work folder. Cadence never moves, changes or deletes the original, not even when you remove the job or clear downloads.
 
 ## Naming songs
 

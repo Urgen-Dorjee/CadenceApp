@@ -38,6 +38,12 @@ let pythonManager: PythonManager | null = null
 let quitting = false
 const crashTimes: number[] = []
 
+// Files the backend can split (keep in step with backend/services/local_media.py).
+const MEDIA_EXTENSIONS = [
+  'mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'opus', 'wma', 'aiff', 'aif', 'ape', 'm4b',
+  'mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'wmv', 'flv', 'ts',
+]
+
 // Window-control colours for each theme, matching the app's title bar.
 const TITLE_BAR = {
   dark: { color: '#0d0e12', symbolColor: '#c9ccd4', height: 40 },
@@ -154,6 +160,20 @@ function registerIpcHandlers() {
       defaultPath: typeof options?.defaultPath === 'string' ? options.defaultPath : undefined,
       buttonLabel: 'Use this folder',
       properties: ['openDirectory', 'createDirectory'],
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:openMediaFile', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose an audio or video file to split',
+      buttonLabel: 'Split this file',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Audio and video', extensions: MEDIA_EXTENSIONS },
+        { name: 'All files', extensions: ['*'] },
+      ],
     })
     return result.canceled ? null : result.filePaths[0]
   })

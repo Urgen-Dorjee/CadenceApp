@@ -15,6 +15,7 @@ CONFIDENCE = {
     "playlist": 1.0,
     "single": 1.0,
     "pasted": 0.95,
+    "cue": 0.95,
 }
 
 _TS = r"(?<![\d:])(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?![\d:])"
@@ -245,7 +246,9 @@ def parse_pasted(text: str, duration: float) -> dict[str, Any]:
     return parsed
 
 
-def tracks_from_pasted(parsed: dict[str, Any], duration: float, source_id: str) -> list[dict[str, Any]]:
+def tracks_from_pasted(
+    parsed: dict[str, Any], duration: float, source_id: str, origin: str = "pasted"
+) -> list[dict[str, Any]]:
     entries = parsed["entries"]
     tracks = []
     for i, entry in enumerate(entries):
@@ -255,7 +258,7 @@ def tracks_from_pasted(parsed: dict[str, Any], duration: float, source_id: str) 
             artist=entry["artist"],
             start=0.0 if i == 0 and entry["start"] <= 15 else entry["start"],
             end=end,
-            origin="pasted",
+            origin=origin,
             source_id=source_id,
         ))
     return tracks

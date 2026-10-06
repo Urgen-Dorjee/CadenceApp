@@ -137,6 +137,7 @@ def peaks_file(work_dir: str, source_id: str) -> str:
 
 
 def save_peaks(work_dir: str, source_id: str, profile: AudioProfile) -> None:
+    os.makedirs(work_dir, exist_ok=True)
     points = min(MAX_PEAKS, max(1, int(profile.duration * 8)))
     data = {"duration": profile.duration, "peaks": downsample_peaks(profile.peak, points)}
     tmp = peaks_file(work_dir, source_id) + ".tmp"

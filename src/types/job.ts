@@ -9,7 +9,7 @@ export type JobStatus =
   | 'failed'
   | 'cancelled'
 
-export type TrackOrigin = 'chapters' | 'description' | 'comment' | 'silence' | 'playlist' | 'single' | 'manual' | 'pasted'
+export type TrackOrigin = 'chapters' | 'description' | 'comment' | 'silence' | 'playlist' | 'single' | 'manual' | 'pasted' | 'cue'
 
 export interface Track {
   id: string
@@ -43,6 +43,8 @@ export interface Source {
   duration: number
   path: string
   thumbnail: string | null
+  /** A file on this computer rather than a download. Never deleted by Cadence. */
+  local?: boolean
 }
 
 export interface Output {

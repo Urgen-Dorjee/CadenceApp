@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardPaste, Loader2, Scissors, ListMusic, FolderTree, FolderOpen, Link2 } from 'lucide-react'
+import { ClipboardPaste, Loader2, Scissors, ListMusic, FolderTree, FolderOpen, Link2, FileAudio } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { useAppStore } from '../stores/appStore'
@@ -12,7 +12,7 @@ const YOUTUBE_RE = /^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)
 
 const STEPS = [
   { icon: ListMusic, title: 'Finds every song', text: 'Uses chapters, the description or comments, and listens for gaps when there are none.' },
-  { icon: Scissors, title: 'Cuts cleanly', text: 'Each cut lands on the quietest moment between songs, so nothing starts or ends mid-note.' },
+  { icon: Scissors, title: 'Cuts cleanly', text: 'Each cut lands in the real gap between songs, so nothing starts or ends mid-note.' },
   { icon: FolderTree, title: 'Files them for you', text: 'Singer collections go into Artists, movie albums into Albums, tagged with cover art.' },
 ]
 
@@ -58,6 +58,9 @@ export default function HomePage() {
   const [url, setUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [clipboardUrl, setClipboardUrl] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  // dragenter/dragleave fire for every child element crossed, so count them.
+  const dragDepth = useRef(0)
   const ready = useAppStore((s) => s.backend === 'ready')
   const jobsMap = useJobsStore((s) => s.jobs)
   const jobs = sortedJobs(jobsMap)
@@ -82,7 +85,7 @@ export default function HomePage() {
     }
     setSubmitting(true)
     try {
-      const job = await api.createJob(value)
+      const job = await api.createJob({ url: value })
       useJobsStore.getState().upsert(job)
       setUrl('')
       setClipboardUrl(null)
@@ -93,19 +96,82 @@ export default function HomePage() {
     }
   }
 
+  /** Split an audio or video file from this computer. The file itself is never changed. */
+  const startFile = async (path: string | null | undefined) => {
+    if (!path) return
+    setSubmitting(true)
+    try {
+      const job = await api.createJob({ path })
+      useJobsStore.getState().upsert(job)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const openFile = async () => startFile(await window.electronAPI?.selectMediaFile())
+
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+  const onDragEnter = (e: DragEvent) => {
+    if (!hasFiles(e)) return
+    dragDepth.current += 1
+    setDragging(true)
+  }
+  const onDragLeave = (e: DragEvent) => {
+    if (!hasFiles(e)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragging(false)
+  }
+  const onDragOver = (e: DragEvent) => {
+    if (!hasFiles(e)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+  const onDrop = (e: DragEvent) => {
+    if (!hasFiles(e)) return
+    e.preventDefault()
+    dragDepth.current = 0
+    setDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (!ready) {
+      toast('Cadence is still starting. Try again in a moment.')
+      return
+    }
+    if (e.dataTransfer.files.length > 1) toast('One file at a time for now. Splitting the first one.')
+    if (file) startFile(window.electronAPI?.pathForFile(file))
+  }
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     start(url)
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-8 py-8 flex flex-col gap-8">
+    <div
+      className="max-w-5xl mx-auto px-8 py-8 flex flex-col gap-8 min-h-full"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <header className="flex flex-col gap-1">
         <h1 className="font-display text-xl font-semibold tracking-tight">New split</h1>
-        <p className="text-muted">Paste a YouTube link to a movie album, a singer collection or a playlist.</p>
+        <p className="text-muted">
+          Paste a YouTube link to a movie album, a singer collection or a playlist, or open an audio or video file from
+          your computer.
+        </p>
       </header>
 
-      <section className="panel overflow-hidden" aria-label="Start a split">
+      <section
+        className={`panel overflow-hidden transition-shadow ${dragging ? 'ring-2 ring-accent border-accent' : ''}`}
+        aria-label="Start a split"
+      >
+        {dragging && (
+          <div className="flex items-center justify-center gap-2 h-11 bg-accent/10 text-accent text-[13px] font-medium" role="status">
+            <FileAudio size={16} aria-hidden="true" /> Drop the file to split it
+          </div>
+        )}
         <form onSubmit={onSubmit} className="flex gap-2 p-4">
           <label htmlFor="url" className="sr-only">YouTube link</label>
           <div className="relative flex-1">
@@ -124,6 +190,15 @@ export default function HomePage() {
           <button type="submit" className="btn-primary h-11 px-5 text-[14px]" disabled={!ready || submitting || !url.trim()}>
             {submitting ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Scissors size={16} aria-hidden="true" />}
             Split songs
+          </button>
+          <button
+            type="button"
+            className="btn-secondary h-11 px-4 text-[14px]"
+            onClick={openFile}
+            disabled={!ready || submitting}
+            title="Split an audio or video file from this computer. You can also drop it here."
+          >
+            <FileAudio size={16} aria-hidden="true" /> Open a file…
           </button>
         </form>
         {clipboardUrl && (
