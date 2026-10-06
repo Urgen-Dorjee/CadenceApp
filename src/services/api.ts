@@ -55,6 +55,8 @@ export interface ReviewPayload {
   collection: Collection
   /** Folder for this split only; empty means the library folder. */
   destination?: string
+  /** Saving again: overwrite last time's songs instead of adding "(2)" copies. */
+  replace_previous?: boolean
 }
 
 export interface StorageInfo {

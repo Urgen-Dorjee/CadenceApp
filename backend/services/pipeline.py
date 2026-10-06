@@ -64,8 +64,8 @@ def start_analysis(job_id: str) -> None:
     _start(job_id, _analyze(job_id))
 
 
-def start_export(job_id: str) -> None:
-    _start(job_id, _export(job_id))
+def start_export(job_id: str, replace_previous: bool = False) -> None:
+    _start(job_id, _export(job_id, replace_previous))
 
 
 def cancel(job_id: str) -> bool:
@@ -336,11 +336,28 @@ def _review_message(tracks: list[dict[str, Any]]) -> str:
     return f"{found}, {flagged} need a check" if flagged else f"{found}, ready to export"
 
 
-async def _export(job_id: str) -> None:
+def _trash(paths: list[str]) -> list[str]:
+    """Move files to the Recycle Bin. Returns the ones that were moved. Blocking."""
+    from send2trash import send2trash
+
+    moved = []
+    for path in paths:
+        try:
+            send2trash(path)
+            moved.append(path)
+        except OSError as e:  # in use or already gone: leave it, saving still succeeded
+            log.warning("Couldn't move %s to the Recycle Bin: %s", path, e)
+    return moved
+
+
+async def _export(job_id: str, replace_previous: bool = False) -> None:
     store = get_store()
     job = store.get(job_id)
     if not job:
         return
+    # Songs saved last time that may be overwritten (only when the user chose to replace them).
+    previous = [o["path"] for o in job.get("outputs") or []] if replace_previous else []
+    replaceable = frozenset(library.same_file_key(p) for p in previous)
     try:
         async with _export_slots:
             prefs = load_preferences()
@@ -378,7 +395,9 @@ async def _export(job_id: str) -> None:
                 _check_cancel(job_id)
                 source = sources[track["source_id"]]
                 rel = library.relative_path(track, n, collection, prefs)
-                dest = library.unique_path(os.path.join(root, f"{rel}.{prefs.audio_format}"))
+                dest = library.unique_path(os.path.join(root, f"{rel}.{prefs.audio_format}"), replaceable)
+                if any(library.same_file_key(dest) == library.same_file_key(o["path"]) for o in outputs):
+                    dest = library.unique_path(dest)  # two songs with the same name in this save
                 await _update(
                     job_id, progress=round(saving_from + (100 - saving_from) * (n - 1) / len(chosen), 1),
                     message=f"Saving {n} of {len(chosen)}: {track['title']}",
@@ -409,6 +428,12 @@ async def _export(job_id: str) -> None:
 
             folder = os.path.commonpath([os.path.dirname(o["path"]) for o in outputs]) if outputs else root
             await asyncio.to_thread(song_index.get_index().add_paths, [o["path"] for o in outputs])
+            # Old songs this save didn't overwrite (renamed or left out) go to the Recycle Bin.
+            kept = {library.same_file_key(o["path"]) for o in outputs}
+            stale = [p for p in previous if library.same_file_key(p) not in kept and os.path.isfile(p)]
+            if stale:
+                trashed = await asyncio.to_thread(_trash, stale)
+                await asyncio.to_thread(song_index.get_index().remove_paths, trashed)
             sources_after = job["sources"]
             if not prefs.keep_downloads:
                 sources_after = await remove_downloads(job_id, job["sources"])

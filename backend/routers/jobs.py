@@ -77,6 +77,9 @@ class CollectionIn(BaseModel):
 class ReviewIn(BaseModel):
     tracks: list[TrackIn]
     collection: CollectionIn
+    # Saving again: overwrite the songs this split saved last time (old ones that are
+    # no longer needed go to the Recycle Bin) instead of adding "(2)" copies.
+    replace_previous: bool = False
     # Folder for this split only. Empty means the library folder from Settings.
     destination: str = Field(default="", max_length=1000)
 
@@ -160,7 +163,7 @@ async def export_job(job_id: str, body: ReviewIn):
         status="exporting", progress=0, message="Waiting to save", error=None,
     )
     await ws.send_job(job)
-    pipeline.start_export(job_id)
+    pipeline.start_export(job_id, replace_previous=body.replace_previous)
     return {"status": "started"}
 
 

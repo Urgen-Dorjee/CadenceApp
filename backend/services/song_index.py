@@ -166,6 +166,12 @@ class SongIndex:
                 count += 1
         return count
 
+    def remove_paths(self, paths: list[str]) -> None:
+        """Forget files that were deleted or moved to the Recycle Bin."""
+        with self._lock:
+            self._conn.executemany("DELETE FROM songs WHERE path = ?", [(os.path.abspath(p),) for p in paths])
+            self._conn.commit()
+
     def scan(self, roots: list[str], extra_paths: list[str] = ()) -> dict[str, int]:
         """Walk `roots` (plus `extra_paths`), re-reading only changed files and dropping missing ones."""
         with self._lock:

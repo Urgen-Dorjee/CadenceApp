@@ -22,6 +22,11 @@ def sanitize_component(name: str, fallback: str = "Untitled") -> str:
     return name[:_MAX_COMPONENT].rstrip(". ")
 
 
+def same_file_key(path: str) -> str:
+    """Compare paths the way Windows does: absolute, case-insensitive, either slash."""
+    return os.path.normcase(os.path.abspath(path))
+
+
 def template_for(collection_type: str, prefs: Preferences) -> str:
     return {
         "artist": prefs.artist_template,
@@ -56,9 +61,13 @@ def relative_path(track: dict[str, Any], number: int, collection: dict[str, Any]
     return os.path.join(*parts) if parts else sanitize_component(values["title"])
 
 
-def unique_path(path: str) -> str:
-    """Never overwrite: "Song.mp3" -> "Song (2).mp3" if the first exists."""
-    if not os.path.exists(path):
+def unique_path(path: str, replaceable: set[str] | frozenset[str] = frozenset()) -> str:
+    """Never overwrite: "Song.mp3" -> "Song (2).mp3" if the first exists.
+
+    Files in `replaceable` (normalised with `same_file_key`) are songs this split
+    saved last time, which the user chose to replace; those may be overwritten.
+    """
+    if not os.path.exists(path) or same_file_key(path) in replaceable:
         return path
     base, ext = os.path.splitext(path)
     n = 2

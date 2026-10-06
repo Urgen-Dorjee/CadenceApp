@@ -132,7 +132,7 @@ Saving options (**Settings → Saving songs**):
 - **When saving finishes:** optionally show the songs in File Explorer.
 - **Disk space:** keep or delete downloaded audio after saving, and see and clear what's kept.
 
-Cadence never overwrites an existing file. A clash becomes `Song (2).mp3`.
+Cadence never overwrites a file it didn't save. A clash becomes `Song (2).mp3`. When you save a split again, you can **replace** the songs it saved last time (anything no longer in the split goes to the Recycle Bin) or **keep both**.
 
 ## Tech stack
 

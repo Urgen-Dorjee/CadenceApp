@@ -21,6 +21,7 @@ import TrackRow from '../components/review/TrackRow'
 import CollectionPanel from '../components/review/CollectionPanel'
 import TracklistDialog from '../components/review/TracklistDialog'
 import ShortcutsDialog from '../components/review/ShortcutsDialog'
+import SaveAgainDialog from '../components/review/SaveAgainDialog'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
 
@@ -42,6 +43,7 @@ export default function ReviewPage() {
   const [tidying, setTidying] = useState(false)
   const [tracklistOpen, setTracklistOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [saveAgainOpen, setSaveAgainOpen] = useState(false)
   const job = useJobsStore((s) => s.jobs[id])
   const loaded = useJobsStore((s) => s.loaded)
   const player = useAudioPlayer(id)
@@ -193,7 +195,7 @@ export default function ReviewPage() {
   onKeyRef.current = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement
     const typing = Boolean(el.closest('input:not([type=checkbox]):not([type=range]), textarea, select, [contenteditable="true"]'))
-    if (shortcutsOpen || tracklistOpen || exporting || el.closest('[role="dialog"]')) return
+    if (shortcutsOpen || tracklistOpen || saveAgainOpen || exporting || el.closest('[role="dialog"]')) return
     const key = e.key.toLowerCase()
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === 'z' || key === 'y')) {
       if (typing) return // the field's own undo
@@ -390,7 +392,13 @@ export default function ReviewPage() {
     }
   }
 
-  const exportSongs = async () => {
+  /** Save the songs. A split saved before asks first whether to replace those songs. */
+  const onSaveClick = () => {
+    if (job?.status === 'completed' && job.outputs.length) setSaveAgainOpen(true)
+    else exportSongs(false)
+  }
+
+  const exportSongs = async (replacePrevious: boolean) => {
     let target = folder
     if (prefs?.save_mode === 'ask' && !target) {
       const picked = await window.electronAPI?.selectFolder({ defaultPath: prefs.library_dir, title: 'Save these songs to' })
@@ -401,7 +409,7 @@ export default function ReviewPage() {
     setBusy(true)
     try {
       player.playing && player.toggle(tracks[0].source_id)
-      await api.exportJob(id, payload(target))
+      await api.exportJob(id, { ...payload(target), replace_previous: replacePrevious })
       setSaved({ ...history.present, folder: target })
       syncedStatus.current = 'exporting'
     } catch (e) {
@@ -476,7 +484,7 @@ export default function ReviewPage() {
             )}
             <button
               className="btn-primary"
-              onClick={exportSongs}
+              onClick={onSaveClick}
               disabled={busy || included.length === 0 || audioRemoved}
               title={audioRemoved ? 'The downloaded audio was removed after saving' : undefined}
             >
@@ -673,6 +681,7 @@ export default function ReviewPage() {
           </div>
           <TracklistDialog open={tracklistOpen} onOpenChange={setTracklistOpen} onImport={importTracklist} />
           <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+          <SaveAgainDialog open={saveAgainOpen} onOpenChange={setSaveAgainOpen} savedCount={job.outputs.length} onChoose={exportSongs} />
           <p className="text-xs text-faint flex items-center gap-2 flex-wrap">
             <span>
               Space plays or pauses, ←/→ move the cut, Ctrl+Z undoes. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s).
