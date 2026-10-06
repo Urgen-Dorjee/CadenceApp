@@ -52,3 +52,10 @@ describe('previewPath', () => {
     expect(folderOf('C:\\a\\b\\c.mp3')).toBe('C:\\a\\b')
   })
 })
+
+describe('previewPath with the Original format', () => {
+  it('leaves the extension to the saved file', () => {
+    const p = previewPath(song, 1, { type: 'single', artist: '', name: '', album: '', year: '' }, { ...prefs, audio_format: 'original' })
+    expect(p).toBe('C:\\Users\\me\\Music\\Cadence\\Singles\\Pehla Nasha')
+  })
+})

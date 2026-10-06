@@ -87,7 +87,7 @@ export interface Preferences {
   acoustid_key: string
   tidy_names: boolean
   anthropic_api_key: string
-  audio_format: 'mp3' | 'flac' | 'm4a' | 'opus'
+  audio_format: 'mp3' | 'flac' | 'm4a' | 'opus' | 'original'
   audio_bitrate: number
   edge_fade_ms: number
   snap_window_s: number

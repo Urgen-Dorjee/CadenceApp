@@ -26,6 +26,7 @@ const FORMATS: { value: Preferences['audio_format']; label: string; note: string
   { value: 'm4a', label: 'M4A (AAC)', note: 'Smaller, great on phones' },
   { value: 'opus', label: 'Opus', note: 'Smallest for the quality' },
   { value: 'flac', label: 'FLAC', note: 'Lossless, largest files' },
+  { value: 'original', label: 'Original', note: 'No re-encode, as downloaded' },
 ]
 
 const LYRICS: { value: Preferences['lyrics']; label: string; note: string }[] = [
@@ -459,13 +460,20 @@ export default function SettingsPage() {
 
         <Section id="audio" title="Audio" description="File format, quality and how cuts are placed.">
           <Row title="Format" stack>
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-2" role="radiogroup" aria-label="Audio format">
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2" role="radiogroup" aria-label="Audio format">
               {FORMATS.map((f) => (
                 <Choice key={f.value} selected={prefs.audio_format === f.value} onClick={() => save({ audio_format: f.value })} title={f.label} note={f.note} />
               ))}
             </div>
           </Row>
-          {prefs.audio_format !== 'flac' && (
+          {prefs.audio_format === 'original' && (
+            <p className="text-xs text-muted -mt-1 px-1">
+              Songs keep the audio exactly as YouTube sent it (usually Opus), so nothing is lost and files stay small. Cuts land
+              within about 20 ms, audible fades are skipped, and "Adjust volume" writes ReplayGain tags instead. Audio that
+              can't be kept as it is (WMA, WAV, video soundtracks) is saved as lossless FLAC.
+            </p>
+          )}
+          {prefs.audio_format !== 'flac' && prefs.audio_format !== 'original' && (
             <Row title="Quality" hint="Higher sounds closer to the original but makes bigger files." htmlFor="bitrate">
               <select id="bitrate" className="field w-44" value={prefs.audio_bitrate} onChange={(e) => save({ audio_bitrate: Number(e.target.value) })}>
                 {[128, 192, 256, 320].map((b) => (

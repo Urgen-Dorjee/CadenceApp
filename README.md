@@ -123,6 +123,7 @@ Music/Cadence/
 
 Audio options (**Settings → Audio**):
 
+- **Format:** MP3, M4A (AAC), Opus, FLAC, or **Original**: the audio exactly as downloaded (usually Opus), copied without re-encoding so nothing is lost. With Original, cuts land within about 20 ms, audible fades are skipped and *Adjust volume* writes ReplayGain tags instead; audio that can't be copied as it is (WMA, WAV, video soundtracks) is saved as lossless FLAC.
 - **Trim silence:** removes silence at the start and end of each song, keeping a 0.15 s pause (on by default).
 - **Fade in and out:** audible fades of up to 5 s at song edges, useful when songs blend into each other.
 - **Even out loudness:** *ReplayGain tags* measures each song and the whole album (EBU R128) and writes ReplayGain tags (and R128 gains for Opus); players even out the volume and the audio is untouched. *Adjust volume* applies one fixed gain per song to reach −14, −16, −18 or −23 LUFS, never pushing peaks above −1 dBTP and never compressing.

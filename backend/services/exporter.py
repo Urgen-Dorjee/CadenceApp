@@ -6,10 +6,55 @@ import os
 import subprocess
 from typing import Any
 
-from core.ffmpeg_utils import get_ffmpeg_path
+from core.ffmpeg_utils import get_ffmpeg_path, get_ffprobe_path
 from services import loudness
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+# "Original" format: the source's own audio, copied without re-encoding, in the
+# usual file type for that codec: (file extension, FFmpeg muxer).
+ORIGINAL_CONTAINERS = {
+    "opus": ("opus", "ogg"),
+    "aac": ("m4a", "mp4"),
+    "alac": ("m4a", "mp4"),
+    "mp3": ("mp3", "mp3"),
+    "flac": ("flac", "flac"),
+    "vorbis": ("ogg", "ogg"),
+}
+
+
+def source_codec(src: str) -> str:
+    """Codec of the first audio stream, e.g. "opus". Blocking."""
+    proc = subprocess.run(
+        [get_ffprobe_path(), "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name",
+         "-of", "csv=p=0", src],
+        capture_output=True, text=True, creationflags=_NO_WINDOW,
+    )
+    return proc.stdout.strip().lower()
+
+
+def original_format(src: str) -> tuple[str, str | None]:
+    """(extension, muxer) to save `src`'s audio as it is. Codecs no common file type can hold
+    as they are (WMA, PCM, AC-3...) are saved as FLAC instead, which is lossless too: muxer None
+    means "encode to FLAC". Blocking."""
+    return ORIGINAL_CONTAINERS.get(source_codec(src), ("flac", None))
+
+
+def build_copy_command(src: str, start: float, end: float, dest: str, muxer: str) -> list[str]:
+    """Copy one song's audio packets without decoding. Cuts land on a packet edge (about 20-26 ms).
+
+    The start goes after -i: with stream copy, seeking before -i can land well before the
+    start in files without a seek index (keeping the previous song's end), and Ogg then
+    gets negative timestamps that players can't play. Reading from the beginning and
+    dropping packets is exact and still quick, because nothing is decoded.
+    """
+    return [
+        get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y",
+        "-i", src, "-ss", f"{start:.3f}", "-t", f"{max(0.0, end - start):.3f}",
+        "-map", "0:a:0", "-vn", "-map_metadata", "-1", "-c:a", "copy",
+        "-avoid_negative_ts", "make_zero", "-f", muxer, dest,
+    ]
 
 
 def codec_args(fmt: str, bitrate: int) -> list[str]:
@@ -63,11 +108,15 @@ def build_cut_command(
 
 async def cut_track(
     src: str, start: float, end: float, dest: str, fmt: str, bitrate: int, fade_ms: int,
-    gain_db: float = 0.0, fade_in_s: float = 0.0, fade_out_s: float = 0.0,
+    gain_db: float = 0.0, fade_in_s: float = 0.0, fade_out_s: float = 0.0, copy_muxer: str | None = None,
 ) -> None:
+    """Cut and encode one song; with `copy_muxer`, copy the audio as it is instead (no fades or gain)."""
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".part"
-    cmd = build_cut_command(src, start, end, tmp, fmt, bitrate, fade_ms, gain_db, fade_in_s, fade_out_s)
+    if copy_muxer:
+        cmd = build_copy_command(src, start, end, tmp, copy_muxer)
+    else:
+        cmd = build_cut_command(src, start, end, tmp, fmt, bitrate, fade_ms, gain_db, fade_in_s, fade_out_s)
     proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, creationflags=_NO_WINDOW)
     if proc.returncode != 0:
         if os.path.exists(tmp):
@@ -158,6 +207,10 @@ def write_tags(
 
     if fmt == "flac":
         audio = FLAC(path)
+    elif fmt == "ogg":
+        from mutagen.oggvorbis import OggVorbis
+
+        audio = OggVorbis(path)
     else:
         from mutagen.oggopus import OggOpus
 
@@ -183,6 +236,6 @@ def write_tags(
     if picture is not None:
         if fmt == "flac":
             audio.add_picture(picture)
-        else:
+        else:  # Ogg (Opus, Vorbis) stores the picture as a base64 FLAC picture block
             audio["metadata_block_picture"] = [base64.b64encode(picture.write()).decode("ascii")]
     audio.save()

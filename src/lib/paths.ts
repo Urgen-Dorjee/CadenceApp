@@ -31,7 +31,9 @@ export function previewPath(track: Track, number: number, collection: Collection
   })
   const parts = rendered.split(/[\\/]+/).filter((p) => p.trim()).map(sanitize)
   const sep = prefs.library_dir.includes('\\') ? '\\' : '/'
-  return [prefs.library_dir.replace(/[\\/]+$/, ''), ...parts].join(sep) + `.${prefs.audio_format}`
+  // "Original" keeps each video's own file type, which isn't known until saving.
+  const ext = prefs.audio_format === 'original' ? '' : `.${prefs.audio_format}`
+  return [prefs.library_dir.replace(/[\\/]+$/, ''), ...parts].join(sep) + ext
 }
 
 export function folderOf(path: string) {

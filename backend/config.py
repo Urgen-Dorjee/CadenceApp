@@ -57,7 +57,8 @@ if not settings.cadence_token:
     print(f"[Backend] No CADENCE_TOKEN set; generated one for this run: {settings.cadence_token}")
 
 
-AUDIO_FORMATS = ("mp3", "flac", "m4a", "opus")
+# "original" keeps the downloaded audio as it is (no re-encode); see exporter.original_format.
+AUDIO_FORMATS = ("mp3", "flac", "m4a", "opus", "original")
 # Bumped when a saved preference needs upgrading on load (see load_preferences).
 PREFS_VERSION = 2
 

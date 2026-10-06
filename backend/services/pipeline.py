@@ -405,8 +405,17 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                     covers[source["id"]] = thumb
                 return covers[source["id"]]
 
+            # "Original": each source's audio as it is, in its own file type. Volume changes and
+            # audible fades need a re-encode, so "Adjust volume" falls back to ReplayGain tags.
+            original = prefs.audio_format == "original"
+            formats: dict[str, tuple[str, str | None]] = {}
+            for s in job["sources"]:
+                if s["id"] in {t["source_id"] for t in chosen}:
+                    formats[s["id"]] = await asyncio.to_thread(exporter.original_format, s["path"]) if original else (prefs.audio_format, None)
+            loudness_mode = "tags" if original and prefs.loudness == "normalize" else prefs.loudness
+
             album_lufs, album_peak = None, float("-inf")
-            if prefs.loudness == "tags":
+            if loudness_mode == "tags":
                 songs = [(end - start, m) for (start, end), m in zip(spans, measured) if m]
                 album_lufs = loudness.album_loudness(songs)
                 album_peak = max((m["sample_peak_db"] for _, m in songs), default=float("-inf"))
@@ -416,7 +425,8 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                 _check_cancel(job_id)
                 source = sources[track["source_id"]]
                 rel = library.relative_path(track, n, collection, prefs)
-                dest = library.unique_path(os.path.join(root, f"{rel}.{prefs.audio_format}"), replaceable)
+                fmt, muxer = formats[track["source_id"]]
+                dest = library.unique_path(os.path.join(root, f"{rel}.{fmt}"), replaceable)
                 if any(library.same_file_key(dest) == library.same_file_key(o["path"]) for o in outputs):
                     dest = library.unique_path(dest)  # two songs with the same name in this save
                 await _update(
@@ -424,16 +434,16 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                     message=f"Saving {n} of {len(chosen)}: {track['title']}",
                 )
                 m = measured[n - 1]
-                gain = loudness.normalize_gain(m, prefs.loudness_target) if m and prefs.loudness == "normalize" else 0.0
-                replaygain = loudness.replaygain(m, album_lufs, album_peak) if m and prefs.loudness == "tags" else None
+                gain = loudness.normalize_gain(m, prefs.loudness_target) if m and loudness_mode == "normalize" else 0.0
+                replaygain = loudness.replaygain(m, album_lufs, album_peak) if m and loudness_mode == "tags" else None
                 start, end = spans[n - 1]
                 await exporter.cut_track(
-                    source["path"], start, end, dest, prefs.audio_format, prefs.audio_bitrate, prefs.edge_fade_ms,
-                    gain_db=gain, fade_in_s=prefs.song_fade_in_s, fade_out_s=prefs.song_fade_out_s,
+                    source["path"], start, end, dest, fmt, prefs.audio_bitrate, prefs.edge_fade_ms,
+                    gain_db=gain, fade_in_s=prefs.song_fade_in_s, fade_out_s=prefs.song_fade_out_s, copy_muxer=muxer,
                 )
                 album_artist = collection.get("artist") or ""
                 await asyncio.to_thread(
-                    exporter.write_tags, dest, prefs.audio_format,
+                    exporter.write_tags, dest, fmt,
                     {
                         "title": track["title"],
                         "artist": track.get("artist") or album_artist,
@@ -455,7 +465,7 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                         log.warning("Lyrics lookup failed: %s", e)
                         lyrics_offline, found = True, None
                     if found:
-                        await asyncio.to_thread(lyrics.embed, dest, prefs.audio_format, found["synced"] or found["plain"])
+                        await asyncio.to_thread(lyrics.embed, dest, fmt, found["synced"] or found["plain"])
                         lrc = lyrics.lrc_path(dest)
                         mine = library.same_file_key(lrc) in replaceable or library.same_file_key(dest) in replaceable
                         if prefs.lyrics == "lrc" and found["synced"] and (mine or not os.path.exists(lrc)):
