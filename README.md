@@ -302,7 +302,7 @@ Installed copies on Windows and Linux (AppImage) check for updates every six hou
 1. Bump `version` in `package.json` (for example `npm version 2.1.0 --no-git-tag-version`) and commit.
 2. Tag and push: `git tag v2.1.0 && git push origin master v2.1.0`.
 
-The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, then on Windows, macOS (Apple Silicon and Intel) and Linux runs all tests and builds the installers, and finally publishes them in one release with the update feeds (`latest.yml`, `latest-linux.yml`). It uses the repository's built-in token, so no secrets are needed. Running the workflow by hand builds everything without publishing, and keeps the installers as files of that run.
+The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, then on Windows, macOS (Apple Silicon and Intel) and Linux runs all tests and builds the installers, and finally publishes them in one release with the update feeds (`latest.yml`, `latest-linux.yml`). It uses the repository's built-in token, so no secrets are needed. Pushing to a branch named `build/<anything>`, or running the workflow by hand, builds everything without publishing and keeps the installers as files of that run.
 
 **By hand:** set `GH_TOKEN` to a GitHub token with **Contents: read and write** on this repository, then run `npm run release`.
 

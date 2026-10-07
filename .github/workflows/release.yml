@@ -4,12 +4,14 @@ name: Release
 # publish installers for Windows, macOS (Apple Silicon and Intel) and Linux to
 # this repository's Releases, with the update feeds installed copies read.
 #
-# Run it by hand (Actions → Release → Run workflow) to build everything without
-# publishing: the installers are kept as downloadable files of that run.
+# To build everything without publishing, push to a branch named build/<anything>
+# or run it by hand (Actions → Release → Run workflow): the installers are kept as
+# downloadable files of that run.
 
 on:
   push:
     tags: ['v*']
+    branches: ['build/**']
   workflow_dispatch:
 
 permissions:
