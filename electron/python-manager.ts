@@ -57,7 +57,8 @@ export class PythonManager {
       FPCALC_PATH: this.options.fpcalcPath ?? '',
       CADENCE_DATA_DIR: this.options.dataDir,
       PYTHONIOENCODING: 'utf-8',
-      ...(this.options.isPackaged ? { CADENCE_PACKAGED: '1' } : {}),
+      // Packaged: never write .pyc files inside the app, which would break its macOS code signature.
+      ...(this.options.isPackaged ? { CADENCE_PACKAGED: '1', PYTHONDONTWRITEBYTECODE: '1' } : {}),
     }
 
     this.log('info', `[PythonManager] Starting: ${cmd} ${args.join(' ')}`)

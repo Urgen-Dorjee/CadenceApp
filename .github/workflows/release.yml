@@ -113,6 +113,14 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: Check the Mac app (signature and architecture)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          for dmg in ${{ matrix.out }}/*.dmg; do
+            bash scripts/verify-mac-dmg.sh "$dmg" ${{ matrix.arch }}
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: Cadence-${{ runner.os }}-${{ matrix.arch }}

@@ -65,6 +65,7 @@
   "build": {
     "appId": "com.urgendorjee.cadence",
     "productName": "Cadence",
+    "afterSign": "scripts/after-sign-mac.cjs",
     "copyright": "Copyright (c) 2026 Urgen Dorjee",
     "directories": {
       "buildResources": "build",
