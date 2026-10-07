@@ -102,7 +102,11 @@ jobs:
 
       - name: Package
         shell: bash
-        run: npx electron-builder ${{ matrix.target }} --publish never -c.directories.output="${{ matrix.out }}"
+        run: |
+          # Without signing secrets these are empty strings, which electron-builder would
+          # read as a certificate path; remove them so it builds unsigned (ad-hoc on macOS).
+          if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
+          npx electron-builder ${{ matrix.target }} --publish never -c.directories.output="${{ matrix.out }}"
         env:
           # Optional signing: Windows (CSC_LINK / CSC_KEY_PASSWORD) and macOS Developer ID.
           CSC_LINK: ${{ secrets.CSC_LINK }}
