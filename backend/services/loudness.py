@@ -56,7 +56,7 @@ def parse_ebur128(stderr: str) -> dict[str, float | None]:
 def measure(src: str, start: float, end: float) -> dict[str, float | None]:
     """EBU R128 loudness and peaks of one song in the source. Blocking."""
     cmd = [
-        get_ffmpeg_path(), "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-t", f"{max(0.0, end - start):.3f}",
+        get_ffmpeg_path(), "-nostdin", "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-t", f"{max(0.0, end - start):.3f}",
         "-i", src, "-map", "0:a:0", "-vn", "-af", "ebur128=peak=true+sample", "-f", "null", "-",
     ]
     proc = subprocess.run(cmd, capture_output=True, creationflags=_NO_WINDOW)
@@ -114,7 +114,7 @@ def opus_r128_gain(lufs: float) -> str:
 # --- Trimming silence at song edges ---------------------------------------------
 
 def _decode(src: str, start: float, length: float) -> np.ndarray:
-    cmd = [get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, start):.3f}", "-t", f"{length:.3f}",
+    cmd = [get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, start):.3f}", "-t", f"{length:.3f}",
            "-i", src, "-map", "0:a:0", "-vn", "-ac", "1", "-ar", str(TRIM_RATE), "-f", "s16le", "-"]
     proc = subprocess.run(cmd, capture_output=True, creationflags=_NO_WINDOW)
     return np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0

@@ -50,7 +50,7 @@ def build_copy_command(src: str, start: float, end: float, dest: str, muxer: str
     dropping packets is exact and still quick, because nothing is decoded.
     """
     return [
-        get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y",
+        get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-i", src, "-ss", f"{start:.3f}", "-t", f"{max(0.0, end - start):.3f}",
         "-map", "0:a:0", "-vn", "-map_metadata", "-1", "-c:a", "copy",
         "-avoid_negative_ts", "make_zero", "-f", muxer, dest,
@@ -89,7 +89,7 @@ def build_cut_command(
     if fade_out > 0:
         filters.append(f"afade=t=out:st={max(0.0, duration - fade_out):.3f}:d={fade_out:.3f}")
     cmd = [
-        get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y",
+        get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-ss", f"{start:.3f}", "-i", src, "-t", f"{duration:.3f}",
         "-map", "0:a:0", "-vn", "-map_metadata", "-1",
     ]
@@ -117,7 +117,16 @@ async def cut_track(
         cmd = build_copy_command(src, start, end, tmp, copy_muxer)
     else:
         cmd = build_cut_command(src, start, end, tmp, fmt, bitrate, fade_ms, gain_db, fade_in_s, fade_out_s)
-    proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, creationflags=_NO_WINDOW)
+    # A song never takes this long; if FFmpeg stalls, fail the save instead of hanging forever.
+    limit = max(300.0, 2 * (end - start))
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run, cmd, capture_output=True, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=limit,
+        )
+    except subprocess.TimeoutExpired as e:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise RuntimeError(f"FFmpeg stopped responding while saving a song (gave up after {limit:.0f} s).") from e
     if proc.returncode != 0:
         if os.path.exists(tmp):
             os.remove(tmp)

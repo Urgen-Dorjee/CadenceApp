@@ -23,7 +23,7 @@ class CoverError(Exception):
 
 
 def _ffmpeg(args: list[str]) -> bool:
-    proc = subprocess.run([get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y", *args],
+    proc = subprocess.run([get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *args],
                           capture_output=True, creationflags=_NO_WINDOW)
     return proc.returncode == 0
 

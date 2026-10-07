@@ -81,7 +81,7 @@ def _finish(duration: float, rms: list, peak: list, feats: list) -> AudioProfile
 def build_profile(path: str, duration: float, on_progress: Callable[[float], None] | None = None,
                   is_cancelled: Callable[[], bool] | None = None) -> AudioProfile:
     """Decode `path` once and build its profile. Blocking: run it in a thread."""
-    cmd = [get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-i", path,
+    cmd = [get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-i", path,
            "-vn", "-ac", "1", "-ar", str(RATE), "-f", "s16le", "-"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=_NO_WINDOW)
     rms: list[float] = []
@@ -150,7 +150,7 @@ def window_peaks(path: str, start: float, end: float, points: int) -> dict:
     """High-resolution peaks for a short window, used by the cut close-up view."""
     start = max(0.0, start)
     length = max(0.1, end - start)
-    cmd = [get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
+    cmd = [get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
            "-i", path, "-vn", "-ac", "1", "-ar", str(RATE), "-f", "s16le", "-"]
     proc = subprocess.run(cmd, capture_output=True, creationflags=_NO_WINDOW)
     samples = np.abs(np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0)

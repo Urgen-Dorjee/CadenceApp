@@ -56,7 +56,7 @@ def fingerprint(path: str, start: float, end: float) -> tuple[int, str]:
     os.close(fd)
     try:
         subprocess.run(
-            [get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
+            [get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
              "-i", path, "-vn", "-ac", "2", "-ar", "44100", wav],
             check=True, capture_output=True, creationflags=_NO_WINDOW,
         )

@@ -42,7 +42,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: resources/ffmpeg
-          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-v2
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-v3
 
       - name: Download FFmpeg
         run: npm run setup:ffmpeg

@@ -89,7 +89,7 @@ function findFile(dir, name) {
 
 /**
  * Install a tool into resources/<folder>/.
- *   sources: { "<platform>-<arch>": [url, ...] }, every URL's archive is unpacked
+ *   sources: { "<platform>-<arch>": [url or async () => url, ...] }, every archive is unpacked
  *   binaries: executable names (without .exe) to take from the archives
  */
 async function installTool({ title, folder, sources, binaries }) {
@@ -107,7 +107,8 @@ async function installTool({ title, folder, sources, binaries }) {
   fs.mkdirSync(outputDir, { recursive: true });
   const work = fs.mkdtempSync(path.join(os.tmpdir(), `cadence-${folder}-`));
   try {
-    for (const [i, url] of urls.entries()) {
+    for (const [i, source] of urls.entries()) {
+      const url = typeof source === 'function' ? await source() : source;
       const name = new URL(url).pathname.split('/').pop() || `download-${i}`;
       const archive = path.join(work, `${i}-${name.endsWith('.zip') || name.includes('.tar.') ? name : `${name}.zip`}`);
       await downloadFile(url, archive);

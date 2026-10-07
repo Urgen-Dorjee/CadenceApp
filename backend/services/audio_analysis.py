@@ -295,7 +295,7 @@ def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
 
 def _decode_window(path: str, start: float, length: float) -> np.ndarray:
     cmd = [
-        get_ffmpeg_path(), "-hide_banner", "-loglevel", "error",
+        get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error",
         "-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", path,
         "-ac", "1", "-ar", str(ANALYSIS_RATE), "-f", "s16le", "-",
     ]

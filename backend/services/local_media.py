@@ -119,7 +119,7 @@ def extract_cover(path: str, out_dir: str, info: dict[str, Any]) -> str | None:
     out = os.path.join(out_dir, "cover.jpg")
     seek = [] if info["has_cover"] else ["-ss", f"{min(info['duration'] * 0.1, 30):.1f}"]
     proc = subprocess.run(
-        [get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y", *seek, "-i", path,
+        [get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *seek, "-i", path,
          "-map", "0:v:0", "-frames:v", "1", "-vf", "scale='min(1000,iw)':-2", out],
         capture_output=True, creationflags=_NO_WINDOW,
     )
@@ -134,7 +134,7 @@ def make_preview(
     os.makedirs(out_dir, exist_ok=True)
     out = os.path.join(out_dir, PREVIEW_NAME)
     tmp = out + ".part"
-    cmd = [get_ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y", "-i", path, "-map", "0:a:0", "-vn",
+    cmd = [get_ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", path, "-map", "0:a:0", "-vn",
            "-ac", "2", "-c:a", "libopus", "-b:a", "96k", "-f", "webm", "-progress", "pipe:1", "-nostats", tmp]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=_NO_WINDOW)
     try:
