@@ -109,7 +109,7 @@ def lookup(api_key: str, duration: int, fp: str) -> dict[str, Any] | None:
         "client": api_key, "duration": duration, "fingerprint": fp,
         "meta": "recordings releasegroups compress", "format": "json",
     }).encode()
-    request = urllib.request.Request(LOOKUP_URL, data=body, headers={"User-Agent": "Cadence/2.0"})
+    request = urllib.request.Request(LOOKUP_URL, data=body, headers={"User-Agent": "Cadence/2.1"})
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             data = json.loads(response.read())
