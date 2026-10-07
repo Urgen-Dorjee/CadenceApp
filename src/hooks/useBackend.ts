@@ -7,7 +7,7 @@ import { useThemeStore } from '../stores/themeStore'
 import type { Job } from '../types/job'
 import toast from 'react-hot-toast'
 
-/** When a save finishes: refresh disk numbers and, if wanted, show the songs in Explorer. */
+/** When a save finishes: refresh disk numbers and, if wanted, show the songs in their folder. */
 function onJobChanged(previous: Job | undefined, job: Job) {
   if (previous?.status !== 'exporting' || job.status !== 'completed') return
   usePrefsStore.getState().refreshStorage()

@@ -64,6 +64,7 @@ electron-log/
 *.png
 !resources/icon.ico
 !resources/icon.png
+!resources/icon-1024.png
 
 # Test / coverage
 htmlcov/
@@ -83,3 +84,6 @@ coverage.xml
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Backend build for macOS/Linux packages
+.cadence-build/

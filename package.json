@@ -22,7 +22,7 @@
     "setup:all": "npm run setup:python && npm run setup:ffmpeg && npm run setup:deno && npm run setup:chromaprint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:backend": "cd backend && \"venv\\Scripts\\python.exe\" -m pytest -q",
+    "test:backend": "node scripts/test-backend.cjs",
     "setup:deno": "node scripts/download-deno.cjs",
     "setup:chromaprint": "node scripts/download-chromaprint.cjs",
     "release": "npm run build:backend && npm run build:frontend && electron-builder --publish always"
@@ -79,7 +79,9 @@
         "from": "resources/ffmpeg",
         "to": "ffmpeg",
         "filter": [
+          "ffmpeg",
           "ffmpeg.exe",
+          "ffprobe",
           "ffprobe.exe"
         ]
       },
@@ -87,6 +89,7 @@
         "from": "resources/deno",
         "to": "deno",
         "filter": [
+          "deno",
           "deno.exe"
         ]
       },
@@ -94,12 +97,9 @@
         "from": "resources/chromaprint",
         "to": "chromaprint",
         "filter": [
+          "fpcalc",
           "fpcalc.exe"
         ]
-      },
-      {
-        "from": "C:/temp/cadence-backend-build/backend",
-        "to": "backend"
       }
     ],
     "win": {
@@ -111,7 +111,13 @@
           ]
         }
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.ico",
+      "extraResources": [
+        {
+          "from": "C:/temp/cadence-backend-build/backend",
+          "to": "backend"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -133,6 +139,43 @@
         "repo": "CadenceApp",
         "releaseType": "release"
       }
-    ]
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg"
+        }
+      ],
+      "category": "public.app-category.music",
+      "icon": "resources/icon-1024.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extraResources": [
+        {
+          "from": ".cadence-build/backend",
+          "to": "backend"
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "Cadence-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Audio",
+      "icon": "resources/icon-1024.png",
+      "synopsis": "Split YouTube jukeboxes and albums into tagged songs",
+      "maintainer": "Urgen Dorjee <Urgen-Dorjee@users.noreply.github.com>",
+      "artifactName": "Cadence-${version}-linux-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": ".cadence-build/backend",
+          "to": "backend"
+        }
+      ]
+    }
   }
 }

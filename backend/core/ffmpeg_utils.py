@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 from config import settings
+from core.platform_paths import bundled_tool
 
 
 def get_ffmpeg_path() -> str:
@@ -14,7 +15,7 @@ def get_ffmpeg_path() -> str:
         return env_path
 
     # 2. Bundled location
-    bundled = Path(__file__).parent.parent.parent / "resources" / "ffmpeg" / "ffmpeg.exe"
+    bundled = bundled_tool("ffmpeg", "ffmpeg")
     if bundled.exists():
         return str(bundled)
 

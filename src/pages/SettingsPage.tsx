@@ -11,6 +11,7 @@ import { breakablePath, previewPath } from '../lib/paths'
 import { LAYOUT_PRESETS, TEMPLATE_KEY, presetIndex } from '../lib/layouts'
 import type { CollectionType, Preferences, Track } from '../types/job'
 import Switch from '../components/ui/Switch'
+import { fileManagerName, systemName } from '../lib/platform'
 
 const SECTIONS = [
   { id: 'saving', label: 'Saving songs' },
@@ -186,7 +187,9 @@ export default function SettingsPage() {
     const v = `Version ${version || '…'}`
     switch (updateStatus.state) {
       case 'unsupported':
-        return `${v} · Updates work in the installed app`
+        return updateStatus.message
+          ? `${v} · Get new versions from the Releases page on GitHub`
+          : `${v} · Updates work in the installed app`
       case 'checking':
         return `${v} · Checking for updates…`
       case 'none':
@@ -325,7 +328,7 @@ export default function SettingsPage() {
             </div>
           </Row>
 
-          <Row title="Show songs in File Explorer when saving finishes" htmlFor="open-when-done">
+          <Row title={`Show songs in ${fileManagerName()} when saving finishes`} htmlFor="open-when-done">
             <Switch id="open-when-done" checked={prefs.open_when_done} onChange={(v) => save({ open_when_done: v })} />
           </Row>
 
@@ -542,7 +545,7 @@ export default function SettingsPage() {
                 ['light', 'Light', <Sun key="l" size={16} />],
                 ['system', 'System', <Monitor key="s" size={16} />],
               ] as [ThemePreference, string, ReactNode][]).map(([value, label, icon]) => (
-                <Choice key={value} selected={theme === value} onClick={() => setTheme(value)} icon={icon} title={label} note={value === 'system' ? 'Match Windows' : `Always ${label.toLowerCase()}`} />
+                <Choice key={value} selected={theme === value} onClick={() => setTheme(value)} icon={icon} title={label} note={value === 'system' ? `Match ${systemName()}` : `Always ${label.toLowerCase()}`} />
               ))}
             </div>
           </Row>
@@ -622,6 +625,10 @@ export default function SettingsPage() {
                 <button className="btn-primary" onClick={() => window.electronAPI?.installUpdate()}>
                   <RefreshCw size={14} aria-hidden="true" /> Restart to update
                 </button>
+              ) : updateStatus.state === 'unsupported' && updateStatus.message ? (
+                <a className="btn-secondary" href={updateStatus.message} target="_blank" rel="noreferrer">
+                  Open Releases page
+                </a>
               ) : (
                 <button
                   className="btn-secondary"

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  /** 'win32', 'darwin' or 'linux', so the interface can use each system's words and keys. */
+  platform: process.platform,
   getBackendInfo: () => ipcRenderer.invoke('backend:getInfo'),
   selectFolder: (options?: { defaultPath?: string; title?: string }) => ipcRenderer.invoke('dialog:openDir', options),
   selectMediaFiles: () => ipcRenderer.invoke('dialog:openMediaFiles'),

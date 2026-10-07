@@ -7,6 +7,7 @@ export interface UpdateStatus {
 }
 
 interface ElectronAPI {
+  platform: 'win32' | 'darwin' | 'linux' | string
   getBackendInfo: () => Promise<{ port: number; token: string }>
   selectFolder: (options?: { defaultPath?: string; title?: string }) => Promise<string | null>
   selectMediaFiles: () => Promise<string[]>

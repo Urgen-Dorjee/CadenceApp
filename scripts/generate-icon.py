@@ -1,11 +1,12 @@
 """
 generate-icon.py
-Generates resources/icon.ico for Cadence: a teal rounded square with white
+Generates resources/icon.ico (Windows) and resources/icon-1024.png (macOS and
+Linux, which build their icons from it) for Cadence: a teal rounded square with white
 audio bars, matching the logo in the app's sidebar.
 
 Needs only numpy. Each size is rendered with 4x supersampling and stored as a
 PNG inside the .ico (supported by Windows Vista and later).
-Run: backend/venv/Scripts/python.exe scripts/generate-icon.py
+Run: python scripts/generate-icon.py (with numpy, e.g. backend/venv's Python)
 """
 
 import os
@@ -88,7 +89,10 @@ def main():
     preview = os.path.join(os.path.dirname(OUTPUT_PATH), "icon.png")
     with open(preview, "wb") as f:
         f.write(png_bytes(render(256)))
-    print(f"Wrote {OUTPUT_PATH} ({', '.join(str(s) for s in SIZES)} px) and {preview}")
+    large = os.path.join(os.path.dirname(OUTPUT_PATH), "icon-1024.png")
+    with open(large, "wb") as f:
+        f.write(png_bytes(render(1024)))
+    print(f"Wrote {OUTPUT_PATH} ({', '.join(str(s) for s in SIZES)} px), {preview} and {large}")
 
 
 if __name__ == "__main__":

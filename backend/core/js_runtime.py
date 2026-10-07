@@ -4,14 +4,16 @@ import os
 import shutil
 from pathlib import Path
 
+from core.platform_paths import bundled_tool
+
 
 def find_deno() -> str | None:
     # 1. Set by Electron (bundled copy in packaged builds)
     env_path = os.environ.get("DENO_PATH")
     if env_path and Path(env_path).is_file():
         return env_path
-    # 2. Dev checkout: resources/deno/deno.exe
-    bundled = Path(__file__).parent.parent.parent / "resources" / "deno" / "deno.exe"
+    # 2. Dev checkout: resources/deno/deno(.exe)
+    bundled = bundled_tool("deno", "deno")
     if bundled.is_file():
         return str(bundled)
     # 3. Installed system-wide

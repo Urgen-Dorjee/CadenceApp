@@ -12,7 +12,11 @@ interface PythonManagerOptions {
   ffmpegPath: string | null
   denoPath: string | null
   fpcalcPath: string | null
+  /** Per-user data folder (database, settings, work files). */
+  dataDir: string
 }
+
+const isWindows = process.platform === 'win32'
 
 type Logger = (level: 'info' | 'warn' | 'error', message: string) => void
 
@@ -51,6 +55,7 @@ export class PythonManager {
       FFMPEG_PATH: this.options.ffmpegPath ?? '',
       DENO_PATH: this.options.denoPath ?? '',
       FPCALC_PATH: this.options.fpcalcPath ?? '',
+      CADENCE_DATA_DIR: this.options.dataDir,
       PYTHONIOENCODING: 'utf-8',
       ...(this.options.isPackaged ? { CADENCE_PACKAGED: '1' } : {}),
     }
@@ -109,7 +114,9 @@ export class PythonManager {
     if (this.options.isPackaged) {
       // Production: use standalone Python bundled in resources/backend/python/
       const backendDir = path.join(this.options.resourcesPath, 'backend')
-      const pythonExe = path.join(backendDir, 'python', 'python.exe')
+      const pythonExe = isWindows
+        ? path.join(backendDir, 'python', 'python.exe')
+        : path.join(backendDir, 'python', 'bin', 'python3')
       const mainPy = path.join(backendDir, 'main.py')
       return {
         cmd: pythonExe,
@@ -139,8 +146,10 @@ export class PythonManager {
 
     const backendPath = path.join(projectRoot, 'backend', 'main.py')
     // Try venv first, then system python
-    const venvPython = path.join(projectRoot, 'backend', 'venv', 'Scripts', 'python.exe')
-    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python'
+    const venvPython = isWindows
+      ? path.join(projectRoot, 'backend', 'venv', 'Scripts', 'python.exe')
+      : path.join(projectRoot, 'backend', 'venv', 'bin', 'python')
+    const pythonCmd = fs.existsSync(venvPython) ? venvPython : isWindows ? 'python' : 'python3'
 
     return {
       cmd: pythonCmd,

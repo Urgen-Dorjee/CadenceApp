@@ -6,13 +6,14 @@ import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import log from 'electron-log/main'
 import { PythonManager } from './python-manager'
-import { FFmpegManager } from './ffmpeg-manager'
+import { FFmpegManager, exe } from './ffmpeg-manager'
 import { setupAutoUpdater } from './auto-updater'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Logs go to %APPDATA%\Cadence\logs\main.log (rotated at 5 MB) so problems can be diagnosed.
+// Logs go to <user data>/logs/main.log (rotated at 5 MB) so problems can be diagnosed:
+// %APPDATA%\Cadence, ~/Library/Application Support/Cadence or ~/.config/Cadence.
 log.initialize()
 log.transports.file.maxSize = 5 * 1024 * 1024
 log.transports.file.resolvePathFn = () => path.join(app.getPath('userData'), 'logs', 'main.log')
@@ -43,6 +44,13 @@ const MEDIA_EXTENSIONS = [
   'mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'opus', 'wma', 'aiff', 'aif', 'ape', 'm4b',
   'mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'wmv', 'flv', 'ts',
 ]
+
+const isMac = process.platform === 'darwin'
+
+/** Window-control colours (Windows and Linux draw them over the app's own title bar). */
+function setTitleBarColours(dark: boolean) {
+  if (!isMac) mainWindow?.setTitleBarOverlay(dark ? TITLE_BAR.dark : TITLE_BAR.light)
+}
 
 // Window-control colours for each theme, matching the app's title bar.
 const TITLE_BAR = {
@@ -120,9 +128,11 @@ function createWindow() {
     },
     show: false,
     autoHideMenuBar: true,
-    // The app draws its own title bar; Windows keeps the min/max/close buttons.
-    titleBarStyle: 'hidden',
-    titleBarOverlay: TITLE_BAR.dark,
+    // The app draws its own title bar. Windows and Linux keep min/max/close on the right;
+    // macOS keeps its traffic lights on the left, inset into the bar.
+    ...(isMac
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 13 } }
+      : { titleBarStyle: 'hidden' as const, titleBarOverlay: TITLE_BAR.dark }),
     backgroundColor: '#0a0b0e',
   })
   if (state.maximized) mainWindow.maximize()
@@ -204,7 +214,7 @@ function registerIpcHandlers() {
   ipcMain.handle('theme:set', (_event, theme: string) => {
     nativeTheme.themeSource = theme === 'dark' || theme === 'light' ? theme : 'system'
     const dark = nativeTheme.shouldUseDarkColors
-    mainWindow?.setTitleBarOverlay(dark ? TITLE_BAR.dark : TITLE_BAR.light)
+    setTitleBarColours(dark)
     mainWindow?.setBackgroundColor(dark ? '#0a0b0e' : '#f6f7f9')
     return dark
   })
@@ -243,8 +253,9 @@ async function startBackend() {
     resourcesPath: process.resourcesPath,
     ffmpegPath: ffmpeg.getPath(),
     // yt-dlp runs YouTube's player JavaScript with Deno; fpcalc fingerprints songs.
-    denoPath: bundledTool('deno', 'deno.exe'),
-    fpcalcPath: bundledTool('chromaprint', 'fpcalc.exe'),
+    denoPath: bundledTool('deno', exe('deno')),
+    fpcalcPath: bundledTool('chromaprint', exe('fpcalc')),
+    dataDir: app.getPath('userData'),
   })
   pythonManager.log = (level, message) => log[level](message)
   pythonManager.onCrash = onBackendCrash
@@ -307,7 +318,8 @@ function setupMenu() {
   if (!app.isPackaged) view.unshift({ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' })
 
   const template: Electron.MenuItemConstructorOptions[] = [
-    { label: 'File', submenu: [{ role: 'quit', label: 'Exit Cadence' }] },
+    // macOS puts About, Hide and Quit (⌘Q) in a menu named after the app.
+    ...(isMac ? [{ role: 'appMenu' as const }] : [{ label: 'File', submenu: [{ role: 'quit' as const, label: 'Exit Cadence' }] }]),
     {
       label: 'Edit',
       submenu: [
@@ -331,10 +343,10 @@ app.on('second-instance', () => {
 app.whenReady().then(async () => {
   setupMenu()
   registerIpcHandlers()
-  // Follow Windows when the app theme is "System".
+  // Follow the system when the app theme is "System".
   nativeTheme.on('updated', () => {
     const dark = nativeTheme.shouldUseDarkColors
-    mainWindow?.setTitleBarOverlay(dark ? TITLE_BAR.dark : TITLE_BAR.light)
+    setTitleBarColours(dark)
     mainWindow?.webContents.send('theme:changed')
   })
   createWindow()

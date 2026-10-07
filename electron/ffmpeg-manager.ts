@@ -1,6 +1,9 @@
 import path from 'path'
 import fs from 'fs'
 
+/** "ffmpeg" -> "ffmpeg.exe" on Windows. */
+export const exe = (name: string) => (process.platform === 'win32' ? `${name}.exe` : name)
+
 export class FFmpegManager {
   private ffmpegDir: string
   private ffmpegPath: string
@@ -11,8 +14,8 @@ export class FFmpegManager {
       ? path.join(process.resourcesPath, 'ffmpeg')
       : path.join(appPath, 'resources', 'ffmpeg')
 
-    this.ffmpegPath = path.join(this.ffmpegDir, 'ffmpeg.exe')
-    this.ffprobePath = path.join(this.ffmpegDir, 'ffprobe.exe')
+    this.ffmpegPath = path.join(this.ffmpegDir, exe('ffmpeg'))
+    this.ffprobePath = path.join(this.ffmpegDir, exe('ffprobe'))
   }
 
   isInstalled(): boolean {
@@ -26,7 +29,7 @@ export class FFmpegManager {
     // Check system PATH
     const systemPaths = (process.env.PATH || '').split(path.delimiter)
     for (const dir of systemPaths) {
-      const candidate = path.join(dir, 'ffmpeg.exe')
+      const candidate = path.join(dir, exe('ffmpeg'))
       if (fs.existsSync(candidate)) {
         return candidate
       }

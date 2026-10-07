@@ -1,7 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
+import { modKey } from '../../lib/platform'
 
-export const SHORTCUTS: { keys: string[]; action: string }[] = [
+export const shortcuts = (): { keys: string[]; action: string }[] => [
   { keys: ['Space'], action: 'Play or pause' },
   { keys: ['←', '→'], action: 'Move the cut 0.1 s (with Shift: 1 s)' },
   { keys: ['[', ']'], action: 'Previous or next cut' },
@@ -11,8 +12,8 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['X'], action: 'Include or skip the selected song' },
   { keys: ['S'], action: 'Split the song at the playhead' },
   { keys: ['J'], action: 'Join the selected song with the next' },
-  { keys: ['Ctrl', 'Z'], action: 'Undo' },
-  { keys: ['Ctrl', 'Shift', 'Z'], action: 'Redo (or Ctrl+Y)' },
+  { keys: [modKey(), 'Z'], action: 'Undo' },
+  { keys: [modKey(), 'Shift', 'Z'], action: `Redo (or ${modKey()}+Y)` },
   { keys: ['?'], action: 'Show these shortcuts' },
 ]
 
@@ -34,7 +35,7 @@ export default function ShortcutsDialog({ open, onOpenChange }: { open: boolean;
             </Dialog.Close>
           </div>
           <dl className="flex flex-col divide-y divide-line">
-            {SHORTCUTS.map(({ keys, action }) => (
+            {shortcuts().map(({ keys, action }) => (
               <div key={action} className="flex items-center justify-between gap-4 py-2">
                 <dt className="text-[13px]">{action}</dt>
                 <dd className="flex items-center gap-1 shrink-0">

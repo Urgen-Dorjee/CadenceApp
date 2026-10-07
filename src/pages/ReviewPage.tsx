@@ -10,6 +10,7 @@ import { formatTime, formatDuration } from '../lib/time'
 import { canMergeWithNext, mergeWithNext, moveEnd, moveStart, needsCheck, needsName, splitAt, updateTrack } from '../lib/tracks'
 import { folderOf, previewPath } from '../lib/paths'
 import { cutForPlayingSong } from '../lib/closeup'
+import { modKey } from '../lib/platform'
 import { canRedo, canUndo, record, redo, startHistory, undo, type History } from '../lib/history'
 import type { Collection, Track } from '../types/job'
 import { Thumbnail } from '../components/jobs/JobCard'
@@ -503,10 +504,10 @@ export default function ReviewPage() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button className="btn-icon" onClick={() => setHistory(undo)} disabled={!canUndo(history)} aria-label="Undo" title="Undo (Ctrl+Z)">
+            <button className="btn-icon" onClick={() => setHistory(undo)} disabled={!canUndo(history)} aria-label="Undo" title={`Undo (${modKey()}+Z)`}>
               <Undo2 size={16} />
             </button>
-            <button className="btn-icon" onClick={() => setHistory(redo)} disabled={!canRedo(history)} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+            <button className="btn-icon" onClick={() => setHistory(redo)} disabled={!canRedo(history)} aria-label="Redo" title={`Redo (${modKey()}+Shift+Z)`}>
               <Redo2 size={16} />
             </button>
             {dirty && (
@@ -736,7 +737,7 @@ export default function ReviewPage() {
           <SaveAgainDialog open={saveAgainOpen} onOpenChange={setSaveAgainOpen} savedCount={job.outputs.length} onChoose={exportSongs} />
           <p className="text-xs text-faint flex items-center gap-2 flex-wrap">
             <span>
-              Space plays or pauses, ←/→ move the cut, Ctrl+Z undoes. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s).
+              Space plays or pauses, ←/→ move the cut, {modKey()}+Z undoes. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s).
               Songs that share a cut move together.
             </span>
             <button className="inline-flex items-center gap-1 text-muted hover:text-ink" onClick={() => setShortcutsOpen(true)}>

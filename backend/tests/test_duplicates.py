@@ -1,10 +1,14 @@
+import os
+
+import pytest
+
 from services.duplicates import find, normalize, singers
 from services.tracklist import make_track
 
 
 def song(title, artist="", duration=240.0, path=None, album="Album"):
     return {"title": title, "artist": artist, "album_artist": "", "album": album, "duration": duration,
-            "path": path or f"C:\Music\{title}.mp3"}
+            "path": path or os.path.abspath(os.path.join("Music", f"{title}.mp3"))}
 
 
 def track(title, artist="", start=0.0, end=240.0, include=True):
@@ -35,5 +39,12 @@ def test_different_singer_or_length_is_not_a_duplicate():
 
 def test_skipped_tracks_and_the_splits_own_files_are_ignored():
     t1, t2 = track("Song A"), track("Song B", include=False)
-    lib = [song("Song A", path="C:\Music\A.mp3"), song("Song B")]
-    assert find([t1, t2], lib, exclude_paths=["c:/music/a.mp3"]) == {}
+    own = os.path.abspath(os.path.join("Music", "A.mp3"))
+    lib = [song("Song A", path=own), song("Song B")]
+    assert find([t1, t2], lib, exclude_paths=[own]) == {}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="only Windows paths ignore case and slash direction")
+def test_own_files_match_regardless_of_case_on_windows():
+    lib = [song("Song A", path=r"C:\Music\A.mp3")]
+    assert find([track("Song A")], lib, exclude_paths=["c:/music/a.mp3"]) == {}

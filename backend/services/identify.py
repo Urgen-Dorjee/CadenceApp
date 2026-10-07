@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.ffmpeg_utils import get_ffmpeg_path
+from core.platform_paths import bundled_tool
 
 LOOKUP_URL = "https://api.acoustid.org/v2/lookup"
 MIN_SCORE = 0.7
@@ -34,7 +35,7 @@ def find_fpcalc() -> str | None:
     env_path = os.environ.get("FPCALC_PATH")
     if env_path and Path(env_path).is_file():
         return env_path
-    bundled = Path(__file__).parent.parent.parent / "resources" / "chromaprint" / "fpcalc.exe"
+    bundled = bundled_tool("chromaprint", "fpcalc")
     if bundled.is_file():
         return str(bundled)
     return shutil.which("fpcalc")

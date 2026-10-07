@@ -13,7 +13,14 @@ export interface UpdateStatus {
 
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000
 
-let status: UpdateStatus = { state: app.isPackaged ? 'idle' : 'unsupported' }
+// macOS only installs updates for signed apps (Developer ID). Until Cadence is signed,
+// Mac users download new versions from the Releases page instead.
+const macUnsigned = process.platform === 'darwin' && !process.env.CADENCE_MAC_SIGNED
+const RELEASES_URL = 'https://github.com/Urgen-Dorjee/CadenceApp/releases/latest'
+
+let status: UpdateStatus = app.isPackaged && !macUnsigned
+  ? { state: 'idle' }
+  : { state: 'unsupported', message: macUnsigned && app.isPackaged ? RELEASES_URL : undefined }
 
 export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
   const send = (next: UpdateStatus) => {
@@ -35,8 +42,8 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
     if (status.state === 'ready') autoUpdater.quitAndInstall(false, true)
   })
 
-  // Updates only work in installed builds.
-  if (!app.isPackaged) return
+  // Updates only work in installed (and, on macOS, signed) builds.
+  if (!app.isPackaged || macUnsigned) return
 
   autoUpdater.logger = log
   // Download quietly in the background; the user decides when to restart.

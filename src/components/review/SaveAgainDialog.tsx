@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { CopyPlus, RefreshCw, X } from 'lucide-react'
+import { trashName } from '../../lib/platform'
 
 /** Saving a split that was saved before: replace last time's songs, or keep both. */
 export default function SaveAgainDialog({
@@ -43,7 +44,7 @@ export default function SaveAgainDialog({
               <span>
                 <span className="block text-[13px] font-medium">Replace them</span>
                 <span className="block text-xs text-muted">
-                  The songs saved last time are overwritten. Any that are no longer in this split go to the Recycle Bin.
+                  The songs saved last time are overwritten. Any that are no longer in this split go to the {trashName()}.
                 </span>
               </span>
             </button>

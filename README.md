@@ -4,13 +4,24 @@
 
 Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie album. Cadence finds where each song starts and ends, cuts in the gap between songs so nothing is clipped and nothing spills over, and files the songs into your music library with titles, album, year, track numbers and cover art.
 
-![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-33-47848F)
 ![React](https://img.shields.io/badge/React-19-61DAFB)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**[⬇ Download the latest Windows installer](https://github.com/Urgen-Dorjee/CadenceApp/releases/latest)** (`Cadence-Setup-<version>.exe`). Installed copies update themselves.
+**[⬇ Download the latest version](https://github.com/Urgen-Dorjee/CadenceApp/releases/latest)**
+
+| System | Download | Updates |
+|---|---|---|
+| Windows 10/11 | `Cadence-Setup-<version>.exe` | Automatic |
+| macOS, Apple Silicon (M1 and later) | `Cadence-<version>-mac-arm64.dmg` | From the Releases page |
+| macOS, Intel | `Cadence-<version>-mac-x64.dmg` | From the Releases page |
+| Linux | `Cadence-<version>-linux-x86_64.AppImage`, or `.deb` for Ubuntu/Debian | Automatic (AppImage) |
+
+**First launch on a Mac:** the app isn't signed with an Apple Developer ID yet, so macOS says it "can't be opened because Apple cannot check it". Open it once from **System Settings → Privacy & Security → Open Anyway** (or right-click the app → **Open**). After that it opens normally.
+
+**AppImage on Linux:** make it executable (`chmod +x Cadence-*.AppImage`) and run it.
 
 ---
 
@@ -161,9 +172,9 @@ Click the pencil on a song to fix its title, singer, album, year or track number
 
 ### Prerequisites
 
-- **Windows 10 or 11** (x64). The build scripts and bundled tools are Windows-specific.
+- **Windows 10/11, macOS 12+ or Linux** (x64; Apple Silicon on macOS)
 - **Node.js 20+** and npm
-- **Python 3.12** on `PATH`
+- **Python 3.12** (`python` on Windows, `python3` on macOS and Linux)
 - About 400 MB free for FFmpeg, Deno and fpcalc, which are downloaded by the setup scripts
 
 ### Install and run
@@ -173,7 +184,7 @@ git clone https://github.com/Urgen-Dorjee/CadenceApp.git
 cd CadenceApp
 
 npm install
-npm run setup:all     # creates backend/venv, downloads FFmpeg, Deno and fpcalc into resources/
+npm run setup:all     # creates backend/venv, downloads FFmpeg, Deno and fpcalc for your system into resources/
 npm run dev           # starts Vite, Electron and the Python backend
 ```
 
@@ -185,7 +196,8 @@ Electron normally starts the backend with a random port and a per-launch token. 
 
 ```bash
 cd backend
-venv\Scripts\python.exe main.py --port 8321
+venv/Scripts/python main.py --port 8321    # Windows
+venv/bin/python main.py --port 8321        # macOS and Linux
 ```
 
 If `CADENCE_TOKEN` isn't set, the backend prints a generated token. Every request needs it in the `x-cadence-token` header.
@@ -194,7 +206,7 @@ If `CADENCE_TOKEN` isn't set, the backend prints a generated token. Every reques
 |---|---|
 | `CADENCE_TOKEN` | Shared secret required on every request (set by Electron) |
 | `BACKEND_PORT` | Port to listen on (default `8321`; Electron picks a free one) |
-| `CADENCE_DATA_DIR` | Override the data folder (default `%APPDATA%\Cadence`) |
+| `CADENCE_DATA_DIR` | Override the data folder (set by Electron; see [Data, logs and troubleshooting](#data-logs-and-troubleshooting)) |
 | `FFMPEG_PATH`, `DENO_PATH`, `FPCALC_PATH` | Paths to the bundled tools (fall back to `resources/` and `PATH`) |
 
 ## Scripts
@@ -273,22 +285,28 @@ Job lifecycle: `queued → resolving → downloading → analyzing → review �
 npm run build
 ```
 
-This packages a standalone Python runtime with only the dependencies in `backend/requirements.txt`, builds the UI and creates `Cadence-Setup-<version>.exe` in `C:\temp\Cadence-release\`. Intermediate files go to `C:\temp\` to avoid OneDrive file locks. The build fails if the backend can't import its dependencies or if the preload script isn't CommonJS.
+This bundles a standalone Python with only the dependencies in `backend/requirements.txt`, builds the UI and packages the app for the system you're on:
+
+- **Windows:** `Cadence-Setup-<version>.exe` in `C:\temp\Cadence-release\` (intermediate files go to `C:\temp\` to avoid OneDrive file locks). Python is copied from your installed Python 3.12.
+- **macOS:** a `.dmg` in `release/`. Python comes from [python-build-standalone](https://github.com/astral-sh/python-build-standalone), a relocatable build. The app gets an ad-hoc signature, which Apple Silicon requires; set `CSC_LINK` / `CSC_KEY_PASSWORD` to sign with a Developer ID instead.
+- **Linux:** an AppImage and a `.deb` in `release/`, also with python-build-standalone.
+
+The build fails if the backend can't import its dependencies or if the preload script isn't CommonJS. The Release workflow builds all of them on GitHub (Windows, macOS Apple Silicon and Intel, Linux), so you don't need a Mac or Linux machine.
 
 ### Publish an update
 
-Installed copies check for updates every six hours, download them in the background and show **Restart to update**. Updates are published to this repository's [Releases](https://github.com/Urgen-Dorjee/CadenceApp/releases) (configured under `build.publish` in `package.json`).
+Installed copies on Windows and Linux (AppImage) check for updates every six hours, download them in the background and show **Restart to update**. macOS only installs updates for apps signed with an Apple Developer ID, so until Cadence is signed, Mac users download new versions from the Releases page (Settings → Updates links to it). Updates are published to this repository's [Releases](https://github.com/Urgen-Dorjee/CadenceApp/releases) (configured under `build.publish` in `package.json`).
 
 **Automatically (recommended):**
 
 1. Bump `version` in `package.json` (for example `npm version 2.1.0 --no-git-tag-version`) and commit.
 2. Tag and push: `git tag v2.1.0 && git push origin master v2.1.0`.
 
-The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, runs all tests, builds the installer and publishes it with `latest.yml` (the update feed). It uses the repository's built-in token, so no secrets are needed.
+The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, then on Windows, macOS (Apple Silicon and Intel) and Linux runs all tests and builds the installers, and finally publishes them in one release with the update feeds (`latest.yml`, `latest-linux.yml`). It uses the repository's built-in token, so no secrets are needed. Running the workflow by hand builds everything without publishing, and keeps the installers as files of that run.
 
 **By hand:** set `GH_TOKEN` to a GitHub token with **Contents: read and write** on this repository, then run `npm run release`.
 
-Every push and pull request also runs the **CI** workflow: type check, frontend tests and backend tests with real FFmpeg.
+Every push and pull request also runs the **CI** workflow on Windows, macOS and Linux: type check, frontend tests and backend tests with real FFmpeg.
 
 ### Code signing (optional)
 
@@ -298,11 +316,12 @@ Unsigned installers work, but Windows SmartScreen shows "Windows protected your 
 
 | What | Where |
 |---|---|
-| Jobs database | `%APPDATA%\Cadence\cadence.db` |
-| Preferences (including API keys) | `%APPDATA%\Cadence\preferences.json` |
-| Downloaded audio, waveforms, thumbnails | `%APPDATA%\Cadence\work\<job id>\` |
-| Logs | `%APPDATA%\Cadence\logs\main.log` (**Settings → Updates → Open logs**) |
-| Saved songs | `%USERPROFILE%\Music\Cadence` by default |
+| Data folder | Windows `%APPDATA%\Cadence`, macOS `~/Library/Application Support/Cadence`, Linux `~/.config/Cadence` |
+| Jobs database | `<data folder>/cadence.db` |
+| Preferences (including API keys) | `<data folder>/preferences.json` |
+| Downloaded audio, waveforms, thumbnails | `<data folder>/work/<job id>/` |
+| Logs | `<data folder>/logs/main.log` (**Settings → Updates → Open logs**) |
+| Saved songs | `Music/Cadence` in your home folder by default |
 
 - **"Sign in to confirm you're not a bot" or downloads failing:** YouTube changes often. Open **Settings → Updates** and update the YouTube downloader (yt-dlp), then restart Cadence.
 - **Age-restricted videos, or the bot check keeps coming back:** in **Settings → YouTube**, choose the browser you're signed in to YouTube with (Firefox works best; close Chrome, Edge or Brave first), or a `cookies.txt` file. A proxy can be set there too.

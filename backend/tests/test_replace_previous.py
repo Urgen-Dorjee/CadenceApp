@@ -98,8 +98,9 @@ def test_unique_path_only_overwrites_replaceable(tmp_path):
     existing = tmp_path / "Song.mp3"
     existing.write_bytes(b"x")
     assert library.unique_path(str(existing)).endswith("Song (2).mp3")
-    key = library.same_file_key(str(existing).upper())
-    assert library.unique_path(str(existing), frozenset({key})) == str(existing)
+    # Windows compares paths ignoring case; macOS and Linux compare them exactly.
+    same = str(existing).upper() if os.name == "nt" else str(existing)
+    assert library.unique_path(str(existing), frozenset({library.same_file_key(same)})) == str(existing)
 
 
 def test_playlist_lists_songs_in_order_with_relative_paths(source, library_dir):

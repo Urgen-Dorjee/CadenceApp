@@ -1,24 +1,58 @@
 name: Release
 
 # Push a tag like v2.1.0 (matching "version" in package.json) to test, build and
-# publish the Windows installer and the update feed (latest.yml) to this
-# repository's Releases. Installed copies of Cadence update from there.
+# publish installers for Windows, macOS (Apple Silicon and Intel) and Linux to
+# this repository's Releases, with the update feeds installed copies read.
+#
+# Run it by hand (Actions → Release → Run workflow) to build everything without
+# publishing: the installers are kept as downloadable files of that run.
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            target: --win --x64
+            arch: x64
+            out: C:/temp/Cadence-release
+          - name: macOS (Apple Silicon)
+            os: macos-14
+            target: --mac --arm64
+            arch: arm64
+            out: release
+          - name: macOS (Intel)
+            os: macos-14
+            target: --mac --x64
+            arch: x64
+            out: release
+          - name: Linux
+            os: ubuntu-22.04
+            target: --linux --x64
+            arch: x64
+            out: release
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      # Tools and the bundled Python are downloaded for this architecture (Intel builds run on an Apple Silicon machine).
+      CADENCE_ARCH: ${{ matrix.arch }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           version=$(node -p "require('./package.json').version")
@@ -26,6 +60,10 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json version $version"
             exit 1
           fi
+
+      - name: Install Rosetta (Intel tools on Apple Silicon)
+        if: runner.os == 'macOS' && matrix.arch == 'x64'
+        run: softwareupdate --install-rosetta --agree-to-license || true
 
       - uses: actions/setup-node@v4
         with:
@@ -37,6 +75,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
+        shell: bash
         run: |
           npm ci
           python -m pip install -r backend/requirements-dev.txt
@@ -48,16 +87,56 @@ jobs:
           npm run setup:chromaprint
 
       - name: Test
+        shell: bash
         run: |
           npx tsc --noEmit -p tsconfig.json
           npm test
-          cd backend
-          python -m pytest -q
+          cd backend && python -m pytest -q
 
-      - name: Build and publish
+      - name: Build the backend and the interface
+        run: |
+          npm run build:backend
+          npm run build:frontend
+
+      - name: Package
+        shell: bash
+        run: npx electron-builder ${{ matrix.target }} --publish never -c.directories.output="${{ matrix.out }}"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code signing: add these repository secrets to sign the installer.
+          # Optional signing: Windows (CSC_LINK / CSC_KEY_PASSWORD) and macOS Developer ID.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: npm run release
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cadence-${{ runner.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            ${{ matrix.out }}/*.exe
+            ${{ matrix.out }}/*.dmg
+            ${{ matrix.out }}/*.AppImage
+            ${{ matrix.out }}/*.deb
+            ${{ matrix.out }}/*.blockmap
+            ${{ matrix.out }}/latest*.yml
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la dist
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Cadence ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --latest

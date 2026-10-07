@@ -10,7 +10,8 @@
  * what Cadence uses, never leftovers from the developer's own venv.
  *
  * Uses a temp directory outside OneDrive to avoid file-locking issues.
- * Run: node scripts/build-backend.js
+ * Windows only; on macOS and Linux this hands over to build-backend-portable.cjs.
+ * Run: node scripts/build-backend.cjs
  */
 const { execSync } = require('child_process');
 const path = require('path');
@@ -78,6 +79,9 @@ function getPythonVersion() {
 }
 
 async function main() {
+  // macOS and Linux bundle a portable Python instead of copying the installed one.
+  if (process.platform !== 'win32') return require('./build-backend-portable.cjs').build();
+
   console.log('=== Cadence Backend Builder (standalone Python) ===\n');
 
   // Get base Python info and a clean venv with only Cadence's dependencies

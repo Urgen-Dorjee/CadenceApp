@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.platform_paths import default_data_dir
+
 APP_NAME = "Cadence"
 
 
@@ -19,7 +21,7 @@ def _get_data_dir() -> str:
     override = os.environ.get("CADENCE_DATA_DIR")
     if override:
         return override
-    return os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
+    return default_data_dir(APP_NAME)
 
 
 def _default_library_dir() -> str:
