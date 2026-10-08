@@ -31,12 +31,12 @@ jobs:
             out: C:/temp/Cadence-release
           - name: macOS (Apple Silicon)
             os: macos-14
-            target: --mac --arm64
+            target: "--mac --arm64 '-c.dmg.artifactName=Cadence-${version}-mac-AppleSilicon.${ext}'"
             arch: arm64
             out: release
           - name: macOS (Intel)
             os: macos-14
-            target: --mac --x64
+            target: "--mac --x64 '-c.dmg.artifactName=Cadence-${version}-mac-Intel.${ext}'"
             arch: x64
             out: release
           - name: Linux

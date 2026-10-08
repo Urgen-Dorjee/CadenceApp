@@ -15,11 +15,11 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 | System | Download | Updates |
 |---|---|---|
 | Windows 10/11 | `Cadence-Setup-<version>.exe` | Automatic |
-| macOS, Apple Silicon (M1 and later) | `Cadence-<version>-mac-arm64.dmg` | From the Releases page |
-| macOS, Intel | `Cadence-<version>-mac-x64.dmg` | From the Releases page |
+| macOS, Apple Silicon (M1 and later) | `Cadence-<version>-mac-AppleSilicon.dmg` | From the Releases page |
+| macOS, Intel | `Cadence-<version>-mac-Intel.dmg` | From the Releases page |
 | Linux | `Cadence-<version>-linux-x86_64.AppImage`, or `.deb` for Ubuntu/Debian | Automatic (AppImage) |
 
-**First launch on a Mac:** pick the download for your Mac's chip ( → About This Mac: "Apple M…" is `mac-arm64`, "Intel" is `mac-x64`). The app isn't signed with an Apple Developer ID yet, so the first time you open it macOS says *"Cadence" Not Opened*. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. After that it opens normally.
+**First launch on a Mac:** pick the download for your Mac's chip ( → About This Mac: "Apple M…" is `mac-AppleSilicon`, "Intel" is `mac-Intel`). The app isn't signed with an Apple Developer ID yet, so the first time you open it macOS says *"Cadence" Not Opened*. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. After that it opens normally.
 
 If macOS ever says Cadence *"is damaged and can't be opened"*, click **Cancel** and run this once in Terminal, then open it again:
 
