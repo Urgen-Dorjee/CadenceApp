@@ -19,7 +19,13 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 | macOS, Intel | `Cadence-<version>-mac-x64.dmg` | From the Releases page |
 | Linux | `Cadence-<version>-linux-x86_64.AppImage`, or `.deb` for Ubuntu/Debian | Automatic (AppImage) |
 
-**First launch on a Mac:** the app isn't signed with an Apple Developer ID yet, so macOS says it "can't be opened because Apple cannot check it". Open it once from **System Settings → Privacy & Security → Open Anyway** (or right-click the app → **Open**). After that it opens normally.
+**First launch on a Mac:** pick the download for your Mac's chip ( → About This Mac: "Apple M…" is `mac-arm64`, "Intel" is `mac-x64`). The app isn't signed with an Apple Developer ID yet, so the first time you open it macOS says *"Cadence" Not Opened*. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. After that it opens normally.
+
+If macOS ever says Cadence *"is damaged and can't be opened"*, click **Cancel** and run this once in Terminal, then open it again:
+
+```bash
+xattr -cr /Applications/Cadence.app
+```
 
 **AppImage on Linux:** make it executable (`chmod +x Cadence-*.AppImage`) and run it.
 

@@ -15,7 +15,7 @@ function run(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
-/** Mach-O programs and libraries under `dir`, deepest first, skipping bundles codesign signs itself. */
+/** Mach-O programs and libraries under `dir`, deepest first so each is signed before what contains it. */
 function machOFiles(dir) {
   const found = [];
   const walk = (d) => {
@@ -23,7 +23,7 @@ function machOFiles(dir) {
       const full = path.join(d, entry.name);
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        if (!/\.(framework|app)$/.test(entry.name)) walk(full);
+        walk(full);
       } else if (entry.isFile() && isMachO(full)) {
         found.push(full);
       }
@@ -54,14 +54,28 @@ exports.default = async function afterSign(context) {
   // Extended attributes (e.g. Finder info) make codesign refuse the bundle.
   run('xattr', ['-cr', app]);
 
-  const resources = path.join(app, 'Contents', 'Resources');
-  const files = machOFiles(resources);
+  // Every loose program and library, including those inside Electron's frameworks...
+  const files = machOFiles(path.join(app, 'Contents'));
   for (const file of files) {
     run('codesign', ['--force', '--sign', '-', '--timestamp=none', file]);
   }
-  console.log(`  • signed ${files.length} bundled programs and libraries`);
+  console.log(`  • signed ${files.length} programs and libraries`);
 
-  run('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none', app]);
+  // ...then the bundles around them, innermost first, and the app last.
+  const bundles = [];
+  const findBundles = (d) => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      const full = path.join(d, entry.name);
+      findBundles(full);
+      if (/\.(framework|app)$/.test(entry.name)) bundles.push(full);
+    }
+  };
+  findBundles(path.join(app, 'Contents'));
+  for (const bundle of bundles) {
+    run('codesign', ['--force', '--sign', '-', '--timestamp=none', bundle]);
+  }
+  run('codesign', ['--force', '--sign', '-', '--timestamp=none', app]);
   try {
     run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
   } catch (err) {

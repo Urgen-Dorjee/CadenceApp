@@ -19,6 +19,8 @@ echo "Architectures (want $want):"
 wrong=0
 count=0
 while IFS= read -r -d '' f; do
+  # Static libraries (.a) are build leftovers that never run and can't be signed.
+  [[ "$f" == *.a ]] && continue
   archs=$(lipo -archs "$f" 2>/dev/null) || continue
   count=$((count + 1))
   if [[ " $archs " != *" $want "* ]]; then
