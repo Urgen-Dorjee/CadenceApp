@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { ArrowLeft, FolderOpen, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Shuffle } from 'lucide-react'
+import { ArrowLeft, FolderOpen, ListEnd, ListPlus, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Shuffle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, type LibrarySong, type TagChanges } from '../services/api'
 import { useAppStore } from '../stores/appStore'
@@ -14,6 +14,18 @@ import { SongCover } from '../components/layout/PlayerBar'
 import EditTagsDialog from '../components/library/EditTagsDialog'
 
 type View = 'songs' | 'artists' | 'albums'
+
+/** "Play next" / "Add to queue" with a short confirmation. */
+function queueSongs(songs: LibrarySong[], where: 'next' | 'end') {
+  const player = usePlayerStore.getState()
+  const wasEmpty = player.index < 0
+  if (where === 'next') player.playNext(songs)
+  else player.addToQueue(songs)
+  if (!wasEmpty) {
+    const what = songs.length === 1 ? `“${songs[0].title}”` : `${songs.length} songs`
+    toast.success(where === 'next' ? `${what} will play next` : `Added ${what} to the queue`)
+  }
+}
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -33,7 +45,7 @@ function SongTable({ songs, showAlbum = true, onEdit }: { songs: LibrarySong[]; 
             {showAlbum && <th className="py-2 font-medium hidden md:table-cell">Album</th>}
             <th className="py-2 font-medium w-16 hidden lg:table-cell">Year</th>
             <th className="py-2 pr-2 font-medium w-16 text-right">Time</th>
-            <th className="w-20 pr-3"><span className="sr-only">Actions</span></th>
+            <th className="w-36 pr-3"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -74,6 +86,22 @@ function SongTable({ songs, showAlbum = true, onEdit }: { songs: LibrarySong[]; 
                 <td className="text-muted tnum hidden lg:table-cell">{song.year}</td>
                 <td className="pr-2 text-right text-muted tnum font-mono text-xs">{formatTime(song.duration, false)}</td>
                 <td className="pr-3 whitespace-nowrap">
+                  <button
+                    className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    onClick={() => queueSongs([song], 'next')}
+                    aria-label={`Play ${song.title} next`}
+                    title="Play next"
+                  >
+                    <ListPlus size={14} />
+                  </button>
+                  <button
+                    className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    onClick={() => queueSongs([song], 'end')}
+                    aria-label={`Add ${song.title} to the queue`}
+                    title="Add to queue"
+                  >
+                    <ListEnd size={14} />
+                  </button>
                   <button
                     className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
                     onClick={() => onEdit([song])}
@@ -219,7 +247,14 @@ export default function LibraryPage() {
             {plural(songs.length, 'song')} · {plural(artists.length, 'singer')} · {plural(albums.length, 'album')} · {formatDuration(totalTime)}
           </p>
         </div>
-        <button className="btn-secondary" onClick={() => playList(sortSongs(filtered, 'title').sort(() => Math.random() - 0.5), 0)}>
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            if (!filtered.length) return
+            if (!usePlayerStore.getState().shuffle) usePlayerStore.getState().toggleShuffle()
+            playList(filtered, Math.floor(Math.random() * filtered.length))
+          }}
+        >
           <Shuffle size={14} aria-hidden="true" /> Shuffle
         </button>
         <button className="btn-ghost" onClick={rescan} disabled={scanning} title="Look for songs added, changed or deleted outside Cadence">
@@ -284,6 +319,9 @@ export default function LibraryPage() {
             </div>
             <button className="btn-secondary" onClick={() => setEditing(openGroup.songs)} title="Change the album, singer or year of every song here">
               <Pencil size={14} aria-hidden="true" /> Edit all
+            </button>
+            <button className="btn-secondary" onClick={() => queueSongs(openGroup.songs, 'end')} title="Add every song here to the end of the queue">
+              <ListEnd size={14} aria-hidden="true" /> Add to queue
             </button>
             <button className="btn-primary" onClick={() => playList(openGroup.songs, 0)}>
               <Play size={14} aria-hidden="true" /> Play all

@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Music2, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, FolderOpen, X } from 'lucide-react'
+import { clsx } from 'clsx'
+import { ListMusic, Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, FolderOpen, X } from 'lucide-react'
+import QueuePanel from '../library/QueuePanel'
 import { api } from '../../services/api'
 import { usePlayerStore } from '../../stores/playerStore'
 import { formatTime } from '../../lib/time'
@@ -19,12 +21,16 @@ export function SongCover({ id, hasCover, className }: { id: string; hasCover: b
 /** Library playback, shown above the status bar while something is queued. */
 export default function PlayerBar() {
   const song = usePlayerStore((s) => s.queue[s.index])
-  const { playing, time, duration, volume, index, queue, toggle, next, previous, seek, setVolume, close } = usePlayerStore()
+  const { playing, time, duration, volume, index, queue, repeat, shuffle, toggle, next, previous, seek, setVolume, cycleRepeat, toggleShuffle, close } =
+    usePlayerStore()
+  const [queueOpen, setQueueOpen] = useState(false)
   if (!song) return null
   const total = duration || song.duration
+  const repeatLabel = repeat === 'one' ? 'Repeat this song' : repeat === 'all' ? 'Repeat all' : 'Repeat off'
 
   return (
-    <div className="h-16 shrink-0 bg-chrome border-t border-line flex items-center gap-4 px-4" role="region" aria-label="Now playing">
+    <div className="relative h-16 shrink-0 bg-chrome border-t border-line flex items-center gap-4 px-4" role="region" aria-label="Now playing">
+      {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
       <div className="flex items-center gap-3 w-72 min-w-0">
         <SongCover id={song.id} hasCover={!!song.has_cover} className="w-10 h-10 rounded shrink-0" />
         <div className="min-w-0">
@@ -35,6 +41,15 @@ export default function PlayerBar() {
 
       <div className="flex-1 flex flex-col items-center gap-1 min-w-0 max-w-2xl mx-auto">
         <div className="flex items-center gap-1">
+          <button
+            className={clsx('btn-icon', shuffle && 'text-accent')}
+            onClick={toggleShuffle}
+            aria-label="Shuffle"
+            aria-pressed={shuffle}
+            title={shuffle ? 'Shuffle on' : 'Shuffle off'}
+          >
+            <Shuffle size={15} />
+          </button>
           <button className="btn-icon" onClick={previous} aria-label="Previous song">
             <SkipBack size={16} />
           </button>
@@ -45,8 +60,16 @@ export default function PlayerBar() {
           >
             {playing ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
           </button>
-          <button className="btn-icon" onClick={next} disabled={index + 1 >= queue.length} aria-label="Next song">
+          <button className="btn-icon" onClick={() => next()} disabled={index + 1 >= queue.length && repeat !== 'all'} aria-label="Next song">
             <SkipForward size={16} />
+          </button>
+          <button
+            className={clsx('btn-icon', repeat !== 'off' && 'text-accent')}
+            onClick={cycleRepeat}
+            aria-label={repeatLabel}
+            title={repeatLabel}
+          >
+            {repeat === 'one' ? <Repeat1 size={15} /> : <Repeat size={15} />}
           </button>
         </div>
         <div className="w-full flex items-center gap-2 text-[11px] text-faint tnum font-mono">
@@ -83,6 +106,15 @@ export default function PlayerBar() {
           className="w-24 h-1 accent-[rgb(var(--accent))]"
           aria-label="Volume"
         />
+        <button
+          className={clsx('btn-icon', queueOpen && 'text-accent')}
+          onClick={() => setQueueOpen((v) => !v)}
+          aria-label="Queue"
+          aria-expanded={queueOpen}
+          title={`Queue · ${queue.length} song${queue.length === 1 ? '' : 's'}`}
+        >
+          <ListMusic size={16} />
+        </button>
         <button className="btn-icon" onClick={() => window.electronAPI?.showItemInFolder(song.path)} aria-label="Show in folder" title="Show in folder">
           <FolderOpen size={15} />
         </button>
