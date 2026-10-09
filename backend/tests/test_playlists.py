@@ -19,6 +19,8 @@ AUTH = {"host": f"127.0.0.1:{settings.backend_port}", "x-cadence-token": "test-t
     ("https://www.youtube.com/shorts/xyz", "video", "xyz"),
     ("https://www.youtube.com/watch?v=abc&list=PLx", "playlist", "abc"),
     ("https://www.youtube.com/playlist?list=PLx", "playlist", None),
+    ("https://www.youtube.com/watch?v=sEc6DDWotms&list=RDsEc6DDWotms&start_radio=1", "mix", "sEc6DDWotms"),
+    ("https://music.youtube.com/playlist?list=RDCLAK5uy_abc", "playlist", None),
     ("https://www.youtube.com/@SaregamaMusic", "channel", None),
     ("https://www.youtube.com/@SaregamaMusic/featured", "channel", None),
     ("https://www.youtube.com/channel/UCabc", "channel", None),
@@ -31,6 +33,14 @@ def test_link_kind_and_video_id(url, kind, vid):
 def test_channel_links_list_the_videos_tab_and_playlists_the_list():
     assert youtube._videos_tab("https://www.youtube.com/@name/featured?x=1") == "https://www.youtube.com/@name/videos"
     assert youtube._list_url("https://www.youtube.com/watch?v=a&list=PLx") == "https://www.youtube.com/playlist?list=PLx"
+
+
+def test_mix_links_are_read_from_a_watch_link():
+    # A Mix has no playlist page ("This playlist type is unviewable").
+    watch = "https://www.youtube.com/watch?v=sEc6DDWotms&list=RDsEc6DDWotms"
+    assert youtube._list_url(watch + "&start_radio=1") == watch
+    assert youtube._list_url("https://www.youtube.com/playlist?list=RDsEc6DDWotms") == watch
+    assert youtube._list_url("https://www.youtube.com/watch?v=x&list=RDCLAK5uy_a") == "https://www.youtube.com/playlist?list=RDCLAK5uy_a"
 
 
 @pytest.fixture

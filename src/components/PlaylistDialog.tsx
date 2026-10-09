@@ -8,6 +8,7 @@ import {
   defaultSelection,
   hasVideo,
   LONG_VIDEO_S,
+  MIX_LIMIT,
   type ListedLink,
   type ListedVideo,
   type PlaylistMode,
@@ -73,6 +74,7 @@ export default function PlaylistDialog({
   const downloadGb = (totalSeconds / 60) * 1.2 / 1024
   const pointsAtVideo = link ? hasVideo(link) : false
   const isChannel = listed?.kind === 'channel'
+  const kindName = isChannel ? 'Channel' : listed?.kind === 'mix' ? 'YouTube Mix' : 'Playlist'
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -118,12 +120,16 @@ export default function PlaylistDialog({
             <ListVideo size={18} className="mt-0.5 text-muted shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
               <Dialog.Title className="font-display text-base font-semibold truncate">
-                {listed ? listed.title || (isChannel ? 'Channel' : 'Playlist') : 'Reading the list…'}
+                {listed ? listed.title || kindName : 'Reading the list…'}
               </Dialog.Title>
               <Dialog.Description className="text-[13px] text-muted mt-1">
                 {listed
-                  ? `${isChannel ? 'Channel' : 'Playlist'} · ${listed.entries.length} video${listed.entries.length === 1 ? '' : 's'}${
-                      isChannel && listed.entries.length >= 500 ? ' (the newest 500)' : ''
+                  ? `${kindName} · ${listed.entries.length} video${listed.entries.length === 1 ? '' : 's'}${
+                      isChannel && listed.entries.length >= 500
+                        ? ' (the newest 500)'
+                        : listed.kind === 'mix' && listed.entries.length >= MIX_LIMIT
+                          ? ` (a Mix never ends: the first ${MIX_LIMIT})`
+                          : ''
                     }`
                   : 'Listing the videos. Nothing is downloaded yet.'}
               </Dialog.Description>

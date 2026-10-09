@@ -1,6 +1,6 @@
 /** Playlists and channels: what a link is, and sensible defaults for splitting one. */
 
-export type LinkKind = 'video' | 'playlist' | 'channel'
+export type LinkKind = 'video' | 'playlist' | 'mix' | 'channel'
 
 /** One video of a playlist or channel. `state`: its songs were saved before, or a split for it is in the list. */
 export interface ListedVideo {
@@ -25,7 +25,15 @@ export const LONG_VIDEO_S = 20 * 60
 
 const CHANNEL_PATH = /^\/(@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)(\/[^/]*)?\/?$/
 
-/** Same rules as the backend: a list= link is a playlist (even with a video in it), a channel page is a channel. */
+/** Songs taken from a YouTube Mix, which never ends (same as the backend). */
+export const MIX_LIMIT = 50
+
+/** A YouTube Mix (list=RD...), made up for the viewer. YouTube Music album lists (RDCLAK...) are playlists. */
+function isMix(listId: string): boolean {
+  return listId.startsWith('RD') && !listId.startsWith('RDCLAK')
+}
+
+/** Same rules as the backend: a list= link is a playlist or Mix (even with a video in it), a channel page is a channel. */
 export function linkKind(url: string): LinkKind {
   let parsed: URL
   try {
@@ -33,7 +41,8 @@ export function linkKind(url: string): LinkKind {
   } catch {
     return 'video'
   }
-  if (parsed.searchParams.has('list')) return 'playlist'
+  const list = parsed.searchParams.get('list')
+  if (list !== null) return isMix(list) ? 'mix' : 'playlist'
   if (CHANNEL_PATH.test(parsed.pathname) && !parsed.searchParams.has('v')) return 'channel'
   return 'video'
 }
