@@ -482,7 +482,11 @@ export default function ReviewPage() {
     }
     setBusy(true)
     try {
-      player.playing && player.toggle(tracks[0].source_id)
+      // The download is deleted after saving when it isn't kept, and a file that is playing can't be deleted.
+      if (player.playing && prefs?.keep_downloads === false) {
+        player.toggle(tracks[0].source_id)
+        toast('Playback stopped: the download is removed after saving. Turn on Keep downloads in Settings to keep listening.')
+      }
       await api.exportJob(id, { ...payload(target), replace_previous: replacePrevious })
       setSaved({ ...history.present, folder: target })
       syncedStatus.current = 'exporting'
