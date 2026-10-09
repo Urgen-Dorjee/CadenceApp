@@ -8,6 +8,8 @@ const video = (id: string, minutes: number, state: ListedVideo['state'] = ''): L
 describe('linkKind', () => {
   it('recognises videos, playlists and channels', () => {
     expect(linkKind('https://www.youtube.com/watch?v=abc')).toBe('video')
+    expect(linkKind('https://www.youtube.com/watch?v=sEc6DDWotms&list=RDsEc6DDWotms&start_radio=1')).toBe('mix')
+    expect(linkKind('https://music.youtube.com/playlist?list=RDCLAK5uy_abc')).toBe('playlist')
     expect(linkKind('https://youtu.be/abc')).toBe('video')
     expect(linkKind('https://www.youtube.com/playlist?list=PLx')).toBe('playlist')
     expect(linkKind('https://www.youtube.com/watch?v=abc&list=PLx')).toBe('playlist')

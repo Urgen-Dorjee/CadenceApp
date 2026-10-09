@@ -49,12 +49,23 @@ def _extract(url: str, extra: dict[str, Any]) -> dict[str, Any]:
 
 async def resolve(url: str) -> dict[str, Any]:
     """Metadata for a video or playlist. Playlist entries are listed but not expanded."""
-    return await asyncio.to_thread(_extract, url, {"skip_download": True, "extract_flat": "in_playlist"})
+    extra: dict[str, Any] = {"skip_download": True, "extract_flat": "in_playlist"}
+    if not is_mix(url):
+        return await asyncio.to_thread(_extract, url, extra)
+    # A Mix never ends and comes back round to songs: take the first few, each once.
+    info = await asyncio.to_thread(_extract, _list_url(url), {**extra, "playlistend": MIX_LIMIT})
+    seen: set[str] = set()
+    info["entries"] = [
+        e for e in info.get("entries") or [] if e and e.get("id") and not (e["id"] in seen or seen.add(e["id"]))
+    ]
+    return info
 
 
 # Channel pages: youtube.com/@name, /channel/UC..., /c/name, /user/name (optionally with a tab).
 _CHANNEL_RE = re.compile(r"^/(@[^/]+|channel/[^/]+|c/[^/]+|user/[^/]+)(/[^/]*)?/?$")
 MAX_LISTED = 500
+# YouTube makes a Mix up as you play, so it has no end: take this many songs of it.
+MIX_LIMIT = 50
 
 
 def video_id(url: str) -> str | None:
@@ -70,11 +81,22 @@ def video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _list_id(url: str) -> str:
+    return (urllib.parse.parse_qs(urllib.parse.urlparse(url.strip()).query).get("list") or [""])[0]
+
+
+def is_mix(url: str) -> bool:
+    """A YouTube Mix (list=RD...): made for the viewer, with no playlist page of its own.
+    YouTube Music album lists (RDCLAK...) are ordinary playlists."""
+    list_id = _list_id(url)
+    return list_id.startswith("RD") and not list_id.startswith("RDCLAK")
+
+
 def link_kind(url: str) -> str:
-    """"video", "playlist" (a list= link, even with a video in it) or "channel"."""
+    """"video", "playlist" (a list= link, even with a video in it), "mix" or "channel"."""
     parts = urllib.parse.urlparse(url.strip())
     if "list" in urllib.parse.parse_qs(parts.query):
-        return "playlist"
+        return "mix" if is_mix(url) else "playlist"
     if _CHANNEL_RE.match(parts.path) and not video_id(url):
         return "channel"
     return "video"
@@ -94,11 +116,18 @@ def _videos_tab(url: str) -> str:
 
 
 def _list_url(url: str) -> str:
-    """The playlist itself for a watch?v=...&list=... link."""
-    parts = urllib.parse.urlparse(url.strip())
-    playlist = urllib.parse.parse_qs(parts.query).get("list")
-    if playlist and video_id(url):
-        return f"https://www.youtube.com/playlist?list={playlist[0]}"
+    """The playlist itself for a watch?v=...&list=... link. A Mix has no playlist page, so it is
+    read from a watch link (the video it started from is in its id: RD<video id>)."""
+    list_id = _list_id(url)
+    if not list_id:
+        return url
+    if is_mix(url):
+        vid = video_id(url)
+        if not vid and re.fullmatch(r"RD[\w-]{11}", list_id):
+            vid = list_id[2:]
+        return f"https://www.youtube.com/watch?v={vid}&list={list_id}" if vid else url
+    if video_id(url):
+        return f"https://www.youtube.com/playlist?list={list_id}"
     return url
 
 
@@ -107,16 +136,23 @@ async def list_videos(url: str) -> dict[str, Any]:
     kind = link_kind(url)
     target = _videos_tab(url) if kind == "channel" else _list_url(url)
     info = await asyncio.to_thread(
-        _extract, target, {"skip_download": True, "extract_flat": "in_playlist", "playlistend": MAX_LISTED},
+        _extract, target,
+        {"skip_download": True, "extract_flat": "in_playlist", "playlistend": MIX_LIMIT if kind == "mix" else MAX_LISTED},
     )
     entries = []
+    seen: set[str] = set()
     for e in info.get("entries") or []:
         if not e or not e.get("id") or e.get("ie_key") not in (None, "Youtube"):
             continue  # skip nested playlists or channel shelves
+        if e["id"] in seen:
+            continue  # a Mix can come back round to a song
+        seen.add(e["id"])
         if (e.get("title") or "").strip() in ("[Private video]", "[Deleted video]"):
             continue
         entries.append({"id": e["id"], "title": e.get("title") or "", "duration": float(e.get("duration") or 0)})
     title = (info.get("channel") or info.get("uploader")) if kind == "channel" else info.get("title")
+    if kind == "mix" and title and not title.startswith("Mix"):
+        title = f"Mix - {title}"
     return {"title": title or info.get("title") or "", "kind": kind, "entries": entries}
 
 
