@@ -42,12 +42,12 @@ def size(path: str) -> tuple[int, int] | None:
         return None
 
 
-def import_image(src: str, out_dir: str) -> str:
+def import_image(src: str, out_dir: str, name: str = CUSTOM_NAME) -> str:
     """Copy the user's image into the job folder as a JPEG of at most 1400 px. Blocking."""
     if os.path.splitext(src)[1].lower() not in IMAGE_EXTENSIONS or not os.path.isfile(src):
         raise CoverError("Choose a JPG, PNG, WebP or BMP image.")
     os.makedirs(out_dir, exist_ok=True)
-    out = os.path.join(out_dir, CUSTOM_NAME)
+    out = os.path.join(out_dir, name)
     tmp = out + ".part.jpg"
     scale = f"scale='min({MAX_SIZE},iw)':'min({MAX_SIZE},ih)':force_original_aspect_ratio=decrease"
     if not _ffmpeg(["-i", src, "-frames:v", "1", "-vf", scale, "-q:v", "2", tmp]):

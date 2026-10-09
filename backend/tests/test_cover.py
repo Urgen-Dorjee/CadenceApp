@@ -68,6 +68,39 @@ def test_set_and_reset_cover(client, tmp_path):
     assert r.status_code == 422
 
 
+def test_album_cover_from_musicbrainz_and_undo(client, monkeypatch):
+    """Applying an album sets its cover; Undo points back at the earlier cover file as it is."""
+    from services import musicbrainz
+
+    store = get_store()
+    job = store.create("https://www.youtube.com/watch?v=album")
+    job_dir = pipeline.job_dir(job["id"])
+    os.makedirs(job_dir, exist_ok=True)
+    first = _image(os.path.join(job_dir, "cover-musicbrainz-11111111-1111-1111-1111-111111111111.jpg"), 300, 300)
+    store.update(job["id"], status="review", cover=first, thumbnail=first)
+
+    release_id = "22222222-2222-2222-2222-222222222222"
+    monkeypatch.setattr(musicbrainz, "release_details", lambda mbid: {
+        "id": mbid, "album": "Album", "artist": "Singer", "year": "1995", "tracks": [{"title": "One", "artist": ""}],
+    })
+    monkeypatch.setattr(musicbrainz, "download_cover", lambda mbid, out_dir: _image(
+        os.path.join(out_dir, f"{musicbrainz.COVER_PREFIX}{mbid}.jpg"), 400, 400, "blue"))
+
+    r = client.post(f"/api/jobs/{job['id']}/album-apply", json={"release_id": release_id, "cover": True}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cover"] is True and body["album"] == "Album" and body["tracks"] == [{"title": "One", "artist": ""}]
+    assert body["job"]["cover"].endswith(f"{release_id}.jpg")
+
+    # Undo: the earlier cover file is used again, not copied as the user's own image.
+    r = client.post(f"/api/jobs/{job['id']}/cover", json={"path": first}, headers=AUTH)
+    assert r.json()["cover"] == first and r.json()["thumbnail"] == first
+    assert not os.path.exists(os.path.join(job_dir, cover.CUSTOM_NAME))
+
+    r = client.post(f"/api/jobs/{job['id']}/album-apply", json={"release_id": "not-an-id", "cover": True}, headers=AUTH)
+    assert r.status_code == 422
+
+
 @pytest.mark.parametrize("square_pref, custom, expected", [
     (True, False, (720, 720)),     # video thumbnail cropped square
     (False, False, (1280, 720)),   # kept wide

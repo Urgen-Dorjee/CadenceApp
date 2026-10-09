@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { FolderOutput, ImageIcon } from 'lucide-react'
+import { Disc3, FolderOutput, ImageIcon } from 'lucide-react'
 import type { Collection, CollectionType } from '../../types/job'
 
 const TYPES: { value: CollectionType; label: string; hint: string }[] = [
@@ -22,7 +22,10 @@ interface Props {
   onResetFolder: () => void
   /** Cover shown on the saved songs (the video thumbnail or the user's own image). */
   coverUrl: string | null
-  customCover: boolean
+  /** Where the cover came from: the video's thumbnail, the user's own image, or MusicBrainz. */
+  coverSource: 'video' | 'custom' | 'musicbrainz'
+  /** Look the album up on MusicBrainz. */
+  onFindAlbum: () => void
   /** Settings crop video thumbnails to a square. */
   squareCover: boolean
   onChangeCover: () => void
@@ -32,8 +35,9 @@ interface Props {
 
 export default function CollectionPanel({
   collection, onChange, destination, customFolder, askOnSave, onChooseFolder, onResetFolder,
-  coverUrl, customCover, squareCover, onChangeCover, onResetCover, disabled,
+  coverUrl, coverSource, onFindAlbum, squareCover, onChangeCover, onResetCover, disabled,
 }: Props) {
+  const customCover = coverSource !== 'video'
   const setType = (type: CollectionType) => {
     // Carry the name across so switching type doesn't lose what was typed.
     const name = collection.artist || collection.album || collection.name
@@ -78,7 +82,17 @@ export default function CollectionPanel({
         {collection.type === 'album' && (
           <>
             <label className="flex flex-col gap-1.5 md:col-span-2">
-              <span className="label">Movie or album</span>
+              <span className="label flex items-center">
+                Movie or album
+                <button
+                  type="button"
+                  className="ml-auto inline-flex items-center gap-1 text-xs text-accent hover:underline disabled:opacity-50"
+                  onClick={onFindAlbum}
+                  title="Fill in the album, year, cover and song names from MusicBrainz"
+                >
+                  <Disc3 size={12} aria-hidden="true" /> Find album details…
+                </button>
+              </span>
               <input className="field" value={collection.album} onChange={(e) => onChange({ album: e.target.value })} />
             </label>
             <label className="flex flex-col gap-1.5">
@@ -149,7 +163,9 @@ export default function CollectionPanel({
         <div className="flex-1 min-w-0 text-xs">
           <p className="text-muted">Cover art</p>
           <p className="text-ink">
-            {customCover
+            {coverSource === 'musicbrainz'
+              ? 'The album cover from MusicBrainz'
+              : customCover
               ? 'Your own image'
               : coverUrl
                 ? squareCover ? "The video's thumbnail, cropped square" : "The video's thumbnail"

@@ -11,7 +11,8 @@ from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
 from config import load_preferences
 from services import (
-    audio_analysis, audio_profile, cover, duplicates, identify, local_media, name_cleanup, pipeline, song_index, tracklist,
+    audio_analysis, audio_profile, cover, duplicates, identify, local_media, musicbrainz, name_cleanup, pipeline, song_index,
+    tracklist,
 )
 
 router = APIRouter()
@@ -96,6 +97,16 @@ class ReviewIn(BaseModel):
 
 class CoverIn(BaseModel):
     path: str = Field(min_length=1, max_length=1000)
+
+
+class AlbumSearchIn(BaseModel):
+    album: str = Field(min_length=1, max_length=300)
+    artist: str = Field(default="", max_length=300)
+
+
+class AlbumApplyIn(BaseModel):
+    release_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    cover: bool = True
 
 
 class TracklistIn(BaseModel):
@@ -250,13 +261,55 @@ async def set_cover(job_id: str, body: CoverIn):
         raise HTTPException(status_code=409, detail="Wait for the job to finish before changing its cover")
     if not os.path.isabs(body.path):
         raise HTTPException(status_code=422, detail="Choose an image file.")
+    job_dir = os.path.abspath(pipeline.job_dir(job_id))
+    if os.path.dirname(os.path.abspath(body.path)) == job_dir and os.path.isfile(body.path):
+        # A cover this job had before (Undo): use it again as it is.
+        job = get_store().update(job_id, cover=body.path, thumbnail=body.path)
+        await ws.send_job(job)
+        return job
     try:
-        path = await asyncio.to_thread(cover.import_image, body.path, pipeline.job_dir(job_id))
+        path = await asyncio.to_thread(cover.import_image, body.path, job_dir)
     except cover.CoverError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     job = get_store().update(job_id, cover=path, thumbnail=path)
     await ws.send_job(job)
     return job
+
+
+@router.post("/jobs/{job_id}/album-search")
+async def album_search(job_id: str, body: AlbumSearchIn):
+    """Albums on MusicBrainz matching the typed album and singer names."""
+    _get_job(job_id)
+    try:
+        releases = await asyncio.to_thread(musicbrainz.search_releases, body.album, body.artist)
+    except musicbrainz.MusicBrainzError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"releases": releases}
+
+
+@router.post("/jobs/{job_id}/album-apply")
+async def album_apply(job_id: str, body: AlbumApplyIn):
+    """Details of the chosen album (name, singer, year, song names), and its cover art set on the job.
+    The review screen decides what to use from the details; nothing else is saved."""
+    job = _get_job(job_id)
+    if job["status"] in ACTIVE_STATES:
+        raise HTTPException(status_code=409, detail="Wait for the job to finish first")
+    try:
+        details = await asyncio.to_thread(musicbrainz.release_details, body.release_id)
+    except musicbrainz.MusicBrainzError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    details["cover"] = False
+    if body.cover:
+        try:
+            path = await asyncio.to_thread(musicbrainz.download_cover, body.release_id, pipeline.job_dir(job_id))
+        except musicbrainz.MusicBrainzError:
+            path = None  # the details are still useful without the cover
+        if path:
+            job = get_store().update(job_id, cover=path, thumbnail=path)
+            await ws.send_job(job)
+            details["cover"] = True
+    details["job"] = job
+    return details
 
 
 @router.delete("/jobs/{job_id}/cover")
