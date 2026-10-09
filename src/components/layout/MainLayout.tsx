@@ -22,7 +22,7 @@ function StatusBar() {
   const tone = backend === 'error' || (backend === 'ready' && !ffmpeg) ? 'bad' : backend === 'starting' || backend === 'restarting' ? 'wait' : 'ok'
   const label =
     backend === 'starting'
-      ? 'Starting audio engine…'
+      ? 'Starting audio engine… (the first start after an update can take a minute)'
       : backend === 'restarting'
         ? 'Audio engine stopped unexpectedly. Restarting…'
       : backend === 'error'

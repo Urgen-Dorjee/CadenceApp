@@ -7,8 +7,10 @@ are newer than the yt-dlp that came with the app (a later Cadence version may br
 newer one).
 """
 
+import compileall
 import json
 import os
+import py_compile
 import re
 import shutil
 import subprocess
@@ -87,5 +89,9 @@ def install(data_dir: str, version: str) -> None:
     if proc.returncode != 0 or installed_version(staging) != version:
         shutil.rmtree(staging, ignore_errors=True)
         raise RuntimeError(proc.stderr.decode("utf-8", errors="replace").strip()[-400:] or "pip failed")
+    # Compile it now: the app doesn't write .pyc files, so it would otherwise recompile yt-dlp every start.
+    compileall.compile_dir(
+        staging, quiet=1, force=True, workers=0, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH,
+    )
     shutil.rmtree(folder, ignore_errors=True)
     os.replace(staging, folder)

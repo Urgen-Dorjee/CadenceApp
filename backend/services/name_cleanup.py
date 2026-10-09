@@ -8,8 +8,6 @@ Settings. Results are suggestions; the review screen applies them with Undo.
 import json
 from typing import Any
 
-import anthropic
-
 MODEL = "claude-opus-5-5"
 # Server-side refusal fallback: on a policy decline the API retries on Anthropic's
 # recommended model inside the same call instead of returning the refusal.
@@ -126,6 +124,9 @@ async def suggest_names(api_key: str, job: dict[str, Any], tracks: list[dict[str
     """Ask Claude for clean names. Returns the parsed suggestion dict."""
     if not api_key:
         raise NameCleanupError("Add your Anthropic API key in Settings to tidy names with Claude.")
+    # Imported here: it takes seconds to load and most people never use this.
+    import anthropic
+
     client = client or anthropic.AsyncAnthropic(api_key=api_key, timeout=120.0)
     try:
         response = await client.beta.messages.create(

@@ -281,6 +281,14 @@ async function main() {
     process.exit(1);
   }
 
+  // Precompile everything with hash-checked .pyc files. The installer changes file dates, which makes
+  // ordinary .pyc files look out of date, and the app can't save new ones, so Python would recompile
+  // thousands of files on every start (30-45 s on a cold start).
+  console.log('   Precompiling Python files...');
+  execSync(`"${pythonOut}" -m compileall -q -f -j 0 --invalidation-mode unchecked-hash "${outputDir}"`, {
+    stdio: 'inherit',
+  });
+
   // Calculate total size
   let totalSize = 0;
   function walkDir(dir) {

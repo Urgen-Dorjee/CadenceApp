@@ -121,6 +121,12 @@ async function build() {
     env: { ...process.env, CADENCE_TOKEN: 'build-check', CADENCE_DATA_DIR: path.join(os.tmpdir(), 'cadence-build-check') },
   });
   console.log('   Backend modules: OK');
+  // Hash-checked .pyc files stay valid whatever the file dates, so Python never recompiles them at
+  // start-up (the app can't save new ones: on macOS that would break its signature).
+  console.log('5. Precompiling Python files...');
+  execFileSync(python, ['-m', 'compileall', '-q', '-f', '-j', '0', '--invalidation-mode', 'unchecked-hash', outputDir], {
+    stdio: 'inherit',
+  });
   console.log(`\nOutput: ${outputDir}`);
 }
 
