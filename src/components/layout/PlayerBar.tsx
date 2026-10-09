@@ -103,7 +103,8 @@ export default function PlayerBar() {
           step={0.05}
           value={volume}
           onChange={(e) => setVolume(Number(e.target.value))}
-          className="w-24 h-1 accent-[rgb(var(--accent))]"
+          className="range w-24"
+          style={{ ['--fill' as string]: `${volume * 100}%` }}
           aria-label="Volume"
         />
         <button

@@ -56,11 +56,12 @@ function TrackRow(p: Props) {
           {p.isPlaying ? <Pause size={15} /> : <Play size={15} />}
         </button>
       </td>
-      <td className="min-w-[200px]">
+      <td className="min-w-[280px] w-[45%]">
         <div className="flex items-center gap-1.5">
           <input
-            className="field-inline font-medium"
+            className={clsx('field-inline font-medium', p.isPlaying && 'text-accent')}
             value={track.title}
+            title={track.title}
             onChange={(e) => p.onChange(track.id, { title: e.target.value })}
             aria-label={`Title of song ${index + 1}`}
           />
@@ -89,6 +90,7 @@ function TrackRow(p: Props) {
           <input
             className="field-inline text-muted focus:text-ink"
             value={track.artist}
+            title={track.artist || undefined}
             placeholder="Same as album"
             onChange={(e) => p.onChange(track.id, { artist: e.target.value })}
             aria-label={`Singer of song ${index + 1}`}

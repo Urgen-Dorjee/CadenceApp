@@ -2,6 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../services/api'
 import { AUDIO_START_EVENT, announceAudioStart } from '../stores/playerStore'
 
+// The review player's volume is remembered on this computer.
+const VOLUME_KEY = 'cadence.review.volume'
+function savedVolume(): number {
+  try {
+    const v = Number(localStorage.getItem(VOLUME_KEY))
+    return localStorage.getItem(VOLUME_KEY) !== null && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1
+  } catch {
+    return 1
+  }
+}
+
 /** One shared <audio> element for previewing songs and cut points. */
 export function useAudioPlayer(jobId: string) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -9,10 +20,12 @@ export function useAudioPlayer(jobId: string) {
   const [sourceId, setSourceId] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
+  const [volume, setVolumeState] = useState(savedVolume)
 
   useEffect(() => {
     const audio = new Audio()
     audio.preload = 'metadata'
+    audio.volume = savedVolume()
     audioRef.current = audio
     let frame = 0
     const tick = () => {
@@ -107,5 +120,16 @@ export function useAudioPlayer(jobId: string) {
     [sourceId, playRange],
   )
 
-  return { sourceId, playing, time, playRange, seek, toggle }
+  const setVolume = useCallback((v: number) => {
+    const value = Math.min(1, Math.max(0, v))
+    if (audioRef.current) audioRef.current.volume = value
+    setVolumeState(value)
+    try {
+      localStorage.setItem(VOLUME_KEY, String(value))
+    } catch {
+      // storage blocked: the volume just isn't remembered
+    }
+  }, [])
+
+  return { sourceId, playing, time, volume, playRange, seek, toggle, setVolume }
 }

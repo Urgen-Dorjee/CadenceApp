@@ -6,7 +6,7 @@ import { needsCheck } from '../../lib/tracks'
 import { SEGMENT_TOKENS, drawBars, prepareCanvas, segmentAt, tokenColor } from '../../lib/waveform'
 import { useElementWidth } from '../../hooks/useElementWidth'
 
-const HEIGHT = 64
+const HEIGHT = 96
 
 interface Props {
   tracks: Track[]
@@ -26,6 +26,7 @@ export default function WaveformOverview(p: Props) {
   const [wrapRef, width] = useElementWidth<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [drag, setDrag] = useState<{ index: number; time: number } | null>(null)
+  const [hover, setHover] = useState<number | null>(null)
 
   const toTime = (clientX: number) => {
     const rect = wrapRef.current!.getBoundingClientRect()
@@ -50,8 +51,8 @@ export default function WaveformOverview(p: Props) {
     drawBars(ctx, p.peaks, width, HEIGHT, {
       bar: 2,
       gap: 1,
-      top: 14,
-      bottom: 4,
+      top: 22,
+      bottom: 6,
       fill: (at) => {
         const t = at * p.duration
         const i = segmentAt(p.tracks, t)
@@ -93,8 +94,10 @@ export default function WaveformOverview(p: Props) {
     <div className="flex flex-col gap-1.5">
       <div
         ref={wrapRef}
-        className="relative rounded-md bg-canvas border border-line cursor-crosshair select-none touch-none"
+        className="relative rounded-lg bg-sunken/70 ring-1 ring-inset ring-line cursor-pointer select-none touch-none overflow-hidden"
         style={{ height: HEIGHT }}
+        onPointerMove={(e) => setHover(toTime(e.clientX))}
+        onPointerLeave={() => setHover(null)}
         onPointerDown={(e) => {
           if (e.button !== 0) return
           const t = toTime(e.clientX)
@@ -110,13 +113,21 @@ export default function WaveformOverview(p: Props) {
           <div
             key={t.id}
             className={clsx(
-              'absolute top-0 bottom-0 pointer-events-none',
-              p.selectedId === t.id && 'bg-ink/[0.06] outline outline-1 outline-ink/30 -outline-offset-1',
+              'absolute top-0 bottom-0 pointer-events-none transition-colors',
+              p.selectedId === t.id && 'bg-ink/[0.05] ring-1 ring-inset ring-ink/25 rounded-[3px]',
             )}
             style={{ left: pct(t.start), width: pct(t.end - t.start) }}
           >
             {((t.end - t.start) / p.duration) * width >= 16 && (
-              <span className="absolute left-1.5 top-0 text-[10px] font-semibold text-muted tnum">{i + 1}</span>
+              <span
+                className={clsx(
+                  'absolute left-2 right-2 top-1 text-[10.5px] leading-4 truncate',
+                  p.selectedId === t.id ? 'text-ink' : 'text-muted',
+                )}
+              >
+                <span className="font-semibold tnum">{i + 1}</span>
+                {((t.end - t.start) / p.duration) * width >= 90 && t.title && <span className="ml-1.5">{t.title}</span>}
+              </span>
             )}
             {needsCheck(t) && (
               <span
@@ -145,22 +156,41 @@ export default function WaveformOverview(p: Props) {
               onFocus={() => p.onSelect(p.tracks[index].id)}
               aria-label={`Cut before song ${index + 1} at ${formatTime(time)}. Use arrow keys to move it.`}
             >
-              <span className="absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-ink/70 group-hover:bg-accent group-focus-visible:bg-accent group-focus-visible:w-0.5" />
-              <span className="absolute left-1/2 -translate-x-1/2 -top-1 w-2.5 h-2.5 rounded-sm rotate-45 bg-ink/80 group-hover:bg-accent group-focus-visible:bg-accent" />
-              {drag?.index === index && (
-                <span className="absolute left-1/2 -translate-x-1/2 -top-7 px-1.5 py-0.5 rounded bg-ink text-canvas text-[11px] font-mono tnum whitespace-nowrap">
-                  {formatTime(time)}
-                </span>
-              )}
+              <span className="absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-ink/50 group-hover:bg-accent group-focus-visible:bg-accent group-focus-visible:w-0.5" />
+              {/* Grab handle in the middle of the cut */}
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-6 rounded-full bg-ink/85 ring-2 ring-sunken group-hover:bg-accent group-hover:scale-110 group-focus-visible:bg-accent transition" />
+              <span
+                className={clsx(
+                  'absolute left-1/2 -translate-x-1/2 bottom-1 px-1.5 py-px rounded bg-ink text-canvas text-[10.5px] font-mono tnum whitespace-nowrap transition-opacity',
+                  drag?.index === index ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
+                )}
+              >
+                {formatTime(time)}
+              </span>
             </button>
           )
         })}
 
+        {hover !== null && !drag && (
+          <div className="absolute top-0 bottom-0 w-px bg-ink/30 pointer-events-none" style={{ left: pct(hover) }} aria-hidden="true">
+            <span
+              className={clsx(
+                'absolute bottom-1 px-1.5 py-px rounded bg-raised ring-1 ring-line text-[10.5px] font-mono tnum text-ink whitespace-nowrap',
+                hover / p.duration > 0.9 ? 'right-1' : 'left-1',
+              )}
+            >
+              {formatTime(hover, false)}
+            </span>
+          </div>
+        )}
+
         {p.playhead !== null && (
-          <div className="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none" style={{ left: pct(p.playhead) }} aria-hidden="true" />
+          <div className="absolute top-0 bottom-0 w-0.5 -ml-px bg-accent pointer-events-none shadow-[0_0_8px_rgb(var(--accent)/0.6)]" style={{ left: pct(p.playhead) }} aria-hidden="true">
+            <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-accent" />
+          </div>
         )}
       </div>
-      <div className="flex justify-between text-[11px] text-faint tnum" aria-hidden="true">
+      <div className="flex justify-between px-0.5 text-[10.5px] text-faint font-mono tnum" aria-hidden="true">
         <span>0:00</span>
         <span>{formatTime(p.duration / 4, false)}</span>
         <span>{formatTime(p.duration / 2, false)}</span>

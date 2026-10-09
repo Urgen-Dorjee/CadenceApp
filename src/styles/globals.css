@@ -158,4 +158,27 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+
+  /* A slim slider: the part up to the thumb is filled. Set --fill to the value as a percentage. */
+  .range {
+    @apply h-4 bg-transparent cursor-pointer appearance-none;
+  }
+  .range::-webkit-slider-runnable-track {
+    @apply h-1 rounded-full;
+    background: linear-gradient(to right, rgb(var(--ink) / 0.85) var(--fill, 50%), rgb(var(--line-strong)) var(--fill, 50%));
+  }
+  .range:hover::-webkit-slider-runnable-track,
+  .range:focus-visible::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, rgb(var(--accent)) var(--fill, 50%), rgb(var(--line-strong)) var(--fill, 50%));
+  }
+  .range::-webkit-slider-thumb {
+    @apply appearance-none w-3 h-3 -mt-1 rounded-full bg-ink opacity-0 transition-opacity;
+  }
+  .range:hover::-webkit-slider-thumb,
+  .range:focus-visible::-webkit-slider-thumb {
+    @apply opacity-100;
+  }
+  .range:focus-visible {
+    @apply outline-none;
+  }
 }

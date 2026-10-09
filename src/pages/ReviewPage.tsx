@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pause, Play, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic, Undo2, Redo2, Keyboard, Library } from 'lucide-react'
+import { ArrowLeft, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic, Undo2, Redo2, Keyboard, Library } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, type LibraryMatch } from '../services/api'
 import { useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
-import { formatTime, formatDuration } from '../lib/time'
+import { formatDuration } from '../lib/time'
 import { canMergeWithNext, mergeWithNext, moveEnd, moveStart, needsCheck, needsName, splitAt, updateTrack } from '../lib/tracks'
 import { folderOf, previewPath } from '../lib/paths'
 import { cutForPlayingSong } from '../lib/closeup'
@@ -25,6 +25,8 @@ import AlbumLookupDialog, { type AlbumChoice } from '../components/review/AlbumL
 import { applyAlbumDetails } from '../lib/albumDetails'
 import ShortcutsDialog from '../components/review/ShortcutsDialog'
 import SaveAgainDialog from '../components/review/SaveAgainDialog'
+import ReviewTransport from '../components/review/ReviewTransport'
+import { previousTarget, reviewHeading, songAt } from '../lib/reviewHeader'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
 
@@ -517,6 +519,13 @@ export default function ReviewPage() {
   }
 
   const totalDuration = sources.reduce((sum, s) => sum + (s.duration || 0), 0)
+  const heading = reviewHeading(job.title, collection, tracks)
+  const current = songAt(tracks, player.sourceId, player.time)
+  const playSong = (index: number) => {
+    const track = tracks[index]
+    if (track) player.playRange(track.source_id, track.start)
+  }
+  const playingSource = sources.find((s) => s.id === player.sourceId) ?? sources[0]
 
   return (
     <div className="flex flex-col min-h-full">
@@ -525,11 +534,16 @@ export default function ReviewPage() {
         <Link to="/" className="btn-icon" aria-label="Back to New split">
           <ArrowLeft size={18} />
         </Link>
-        <Thumbnail job={job} className="w-20 h-12 rounded shrink-0" />
+        <Thumbnail job={job} className="w-12 h-12 rounded-md shrink-0 ring-1 ring-line shadow-md" />
         <div className="flex-1 min-w-0">
-          <h1 className="font-display text-lg font-semibold truncate" title={job.title}>{job.title}</h1>
-          <p className="text-xs text-muted flex items-center gap-2">
-            <span className="tnum">{tracks.length} songs · {formatDuration(totalDuration)}</span>
+          <h1 className="font-display text-[19px] leading-tight font-semibold truncate" title={`From the video “${job.title}”`}>
+            {heading.title}
+          </h1>
+          <p className="text-[12.5px] text-muted flex items-center gap-2 mt-0.5 min-w-0">
+            {heading.details.length > 0 && <span className="truncate text-ink/80">{heading.details.join(' · ')}</span>}
+            <span className="tnum shrink-0 text-faint">
+              {tracks.length} song{tracks.length === 1 ? '' : 's'} · {formatDuration(totalDuration)}
+            </span>
             {flagged > 0 && !exporting && (
               <span className="inline-flex items-center gap-1 text-warn">
                 <AlertTriangle size={12} aria-hidden="true" /> {flagged} to check
@@ -618,57 +632,61 @@ export default function ReviewPage() {
           disabled={exporting}
         />
 
-        {/* Player + overview */}
-        <section className="panel p-4 flex flex-col gap-3" aria-label="Songs">
-          <div className="flex items-center gap-3">
-            <button
-              className="w-9 h-9 rounded-full bg-accent text-accent-ink flex items-center justify-center hover:bg-accent/90 transition-colors"
-              onClick={() => tracks[0] && player.toggle(tracks[0].source_id)}
-              aria-label={player.playing ? 'Pause' : 'Play'}
-            >
-              {player.playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
-            </button>
-            <span className="font-mono text-sm tnum text-muted w-24">{formatTime(player.time)}</span>
-            <div className="flex-1" />
+        {/* Player: controls, the whole video as a waveform, and the cut close-up */}
+        <section className="panel p-4 flex flex-col gap-4" aria-label="Player">
+          <ReviewTransport
+            playing={player.playing}
+            time={player.sourceId ? player.time : 0}
+            duration={playingSource?.duration ?? 0}
+            song={current === -1 ? null : { index: current, track: tracks[current] }}
+            fallbackArtist={collection.artist}
+            volume={player.volume}
+            canPrevious={tracks.length > 0}
+            canNext={current < tracks.length - 1}
+            onToggle={() => tracks[0] && player.toggle(tracks[0].source_id)}
+            onPrevious={() => playSong(previousTarget(tracks, current, player.time))}
+            onNext={() => playSong(current + 1)}
+            onVolume={player.setVolume}
+          >
             {singleSource && (
               <button
-                className="btn-secondary h-8"
+                className="btn-ghost"
                 onClick={() => setTracklistOpen(true)}
                 disabled={exporting}
                 title="Paste a tracklist or open a .cue file"
               >
-                <ListMusic size={14} aria-hidden="true" /> Tracklist
+                <ListMusic size={15} aria-hidden="true" /> Tracklist
               </button>
             )}
             <button
-              className="btn-secondary h-8"
+              className="btn-ghost"
               onClick={tidyNames}
               disabled={tidying || exporting}
               title="Clean up song and album names with Claude (sends text only, never audio)"
             >
-              {tidying ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
+              {tidying ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Sparkles size={15} aria-hidden="true" />}
               {tidying ? 'Tidying…' : 'Tidy names'}
             </button>
             {unnamedCount > 0 && (
               <button
-                className="btn-secondary h-8"
+                className="btn-ghost"
                 onClick={identifySongs}
                 disabled={identifying || exporting || audioRemoved}
                 title="Look up songs named “Track …” by their sound on AcoustID"
               >
-                {identifying ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Fingerprint size={14} aria-hidden="true" />}
-                {identifying ? 'Identifying…' : `Identify ${unnamedCount} song${unnamedCount === 1 ? '' : 's'}`}
+                {identifying ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Fingerprint size={15} aria-hidden="true" />}
+                {identifying ? 'Identifying…' : `Identify ${unnamedCount}`}
               </button>
             )}
             <button
-              className="btn-secondary h-8"
+              className="btn-ghost"
               onClick={splitHere}
               disabled={!player.sourceId || exporting}
               title="Split the song under the playhead into two"
             >
-              <Scissors size={14} aria-hidden="true" /> Split at playhead
+              <Scissors size={15} aria-hidden="true" /> Split here
             </button>
-          </div>
+          </ReviewTransport>
 
           {singleSource && (
             <WaveformOverview
@@ -713,8 +731,18 @@ export default function ReviewPage() {
             </p>
           )}
 
+        </section>
+
+        {/* Songs */}
+        <section className="panel flex flex-col" aria-label="Songs">
+          <div className="flex items-center gap-3 px-4 pt-3.5 pb-2">
+            <h2 className="font-display text-[15px] font-semibold">Songs</h2>
+            <span className="text-xs text-faint tnum">
+              {included.length} of {tracks.length} will be saved
+            </span>
+          </div>
           {duplicateIds.length > 0 && !exporting && (
-            <div className="flex items-center gap-3 rounded-md border border-warn/40 bg-warn/5 px-3 py-2" role="status">
+            <div className="mx-4 mb-2 flex items-center gap-3 rounded-md border border-warn/40 bg-warn/5 px-3 py-2" role="status">
               <Library size={15} className="text-warn shrink-0" aria-hidden="true" />
               <p className="flex-1 text-[13px]">
                 {duplicateIds.length === 1 ? '1 song is' : `${duplicateIds.length} songs are`} already in your library.
@@ -727,10 +755,10 @@ export default function ReviewPage() {
               </button>
             </div>
           )}
-          <div className="overflow-x-auto -mx-4">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs text-faint border-b border-line">
+                <tr className="text-left text-[11px] uppercase tracking-[0.06em] text-faint border-y border-line bg-sunken/40">
                   <th className="pl-4 pr-1 py-2 font-medium">
                     <input
                       type="checkbox"
@@ -790,7 +818,7 @@ export default function ReviewPage() {
           />
           <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
           <SaveAgainDialog open={saveAgainOpen} onOpenChange={setSaveAgainOpen} savedCount={job.outputs.length} onChoose={exportSongs} />
-          <p className="text-xs text-faint flex items-center gap-2 flex-wrap">
+          <p className="text-xs text-faint flex items-center gap-2 flex-wrap px-4 py-3 border-t border-line">
             <span>
               Space plays or pauses, ←/→ move the cut, {modKey()}+Z undoes. In a time field, ↑/↓ nudges by 0.1 s (hold Shift for 1 s).
               Songs that share a cut move together.
