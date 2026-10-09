@@ -53,6 +53,17 @@ function StatusBar() {
       )}
       <span className="ml-auto flex items-center gap-3 font-mono">
         {update.state === 'downloading' && <span className="font-sans">Downloading update {update.percent ?? 0}%</span>}
+        {update.state === 'available' && update.message && (
+          <a
+            className="font-sans h-5 px-2 rounded bg-accent text-accent-ink font-medium hover:brightness-110 inline-flex items-center"
+            href={update.message}
+            target="_blank"
+            rel="noreferrer"
+            title={`Cadence ${update.version} is available. Download it from GitHub.`}
+          >
+            Cadence {update.version} available
+          </a>
+        )}
         {update.state === 'ready' && (
           <button
             className="font-sans h-5 px-2 rounded bg-accent text-accent-ink font-medium hover:brightness-110"

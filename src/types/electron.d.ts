@@ -1,5 +1,5 @@
 export interface UpdateStatus {
-  state: 'unsupported' | 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'error'
+  state: 'unsupported' | 'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'ready' | 'error'
   version?: string
   percent?: number
   message?: string

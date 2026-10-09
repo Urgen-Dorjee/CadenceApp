@@ -187,9 +187,9 @@ export default function SettingsPage() {
     const v = `Version ${version || '…'}`
     switch (updateStatus.state) {
       case 'unsupported':
-        return updateStatus.message
-          ? `${v} · Get new versions from the Releases page on GitHub`
-          : `${v} · Updates work in the installed app`
+        return `${v} · Updates work in the installed app`
+      case 'available':
+        return `${v} · Version ${updateStatus.version} is available. Download it and replace this copy.`
       case 'checking':
         return `${v} · Checking for updates…`
       case 'none':
@@ -625,9 +625,9 @@ export default function SettingsPage() {
                 <button className="btn-primary" onClick={() => window.electronAPI?.installUpdate()}>
                   <RefreshCw size={14} aria-hidden="true" /> Restart to update
                 </button>
-              ) : updateStatus.state === 'unsupported' && updateStatus.message ? (
-                <a className="btn-secondary" href={updateStatus.message} target="_blank" rel="noreferrer">
-                  Open Releases page
+              ) : updateStatus.state === 'available' && updateStatus.message ? (
+                <a className="btn-primary" href={updateStatus.message} target="_blank" rel="noreferrer">
+                  Download {updateStatus.version}
                 </a>
               ) : (
                 <button
