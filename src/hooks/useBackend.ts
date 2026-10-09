@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { api, configureApi, websocketUrl } from '../services/api'
+import { api, configureApi, SEND_EVENT, websocketUrl } from '../services/api'
 import { useAppStore } from '../stores/appStore'
 import { useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
@@ -59,6 +59,7 @@ export function useBackend() {
           onJobChanged(previous, msg.job)
         }
         else if (msg.type === 'job_deleted') useJobsStore.getState().remove(msg.job_id)
+        else if (msg.type === 'send') window.dispatchEvent(new CustomEvent(SEND_EVENT, { detail: msg }))
       }
       socket.onclose = () => {
         if (stopped) return

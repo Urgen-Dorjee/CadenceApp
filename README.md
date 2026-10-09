@@ -62,6 +62,7 @@ xattr -cr /Applications/Cadence.app
 - **Proper tags.** Title, artist, album artist, album, year, track number and cover art in MP3, M4A (AAC), Opus or FLAC.
 - **Even loudness.** ReplayGain tags (audio untouched) or one fixed gain per song to a target loudness, measured to EBU R128. Silence at song edges is trimmed.
 - **Organised library.** Configurable folder layouts per collection type, and a built-in Library with search, cover art and a player.
+- **Send to phones, drives and music apps.** Copy a song, an album or a singer to a USB stick, SD card or a phone's music folder, in Singer/Album folders or all in one, optionally converted to MP3 for car stereos (tags and covers kept). Or add them to Apple Music / iTunes in one click when it's installed. The library itself is never changed.
 - **Album details from MusicBrainz.** Look up a movie or album to fill in its name, year, singer and cover art, and every song name when the track count matches. No key needed.
 - **Optional naming helpers.** Identify songs by sound with AcoustID, or tidy messy names with AI.
 - **Resilient.** Jobs persist across restarts, the audio engine restarts itself if it crashes, and the app updates itself in the background.

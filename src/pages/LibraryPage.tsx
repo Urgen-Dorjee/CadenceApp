@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { ArrowLeft, FolderOpen, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Shuffle } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Send, Shuffle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, type LibrarySong, type TagChanges } from '../services/api'
 import { useAppStore } from '../stores/appStore'
@@ -11,13 +11,16 @@ import { usePrefsStore } from '../stores/prefsStore'
 import { albumOf, artistOf, filterSongs, groupSongs, sortSongs, type LibrarySort, type SongGroup } from '../lib/library'
 import { formatDuration, formatTime } from '../lib/time'
 import { SongCover } from '../components/layout/PlayerBar'
+import SendDialog from '../components/library/SendDialog'
 import EditTagsDialog from '../components/library/EditTagsDialog'
 
 type View = 'songs' | 'artists' | 'albums'
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-function SongTable({ songs, showAlbum = true, onEdit }: { songs: LibrarySong[]; showAlbum?: boolean; onEdit: (songs: LibrarySong[]) => void }) {
+function SongTable({
+  songs, showAlbum = true, onEdit, onSend,
+}: { songs: LibrarySong[]; showAlbum?: boolean; onEdit: (songs: LibrarySong[]) => void; onSend: (songs: LibrarySong[]) => void }) {
   const current = usePlayerStore((s) => s.queue[s.index])
   const playing = usePlayerStore((s) => s.playing)
   const playList = usePlayerStore((s) => s.playList)
@@ -74,6 +77,14 @@ function SongTable({ songs, showAlbum = true, onEdit }: { songs: LibrarySong[]; 
                 <td className="text-muted tnum hidden lg:table-cell">{song.year}</td>
                 <td className="pr-2 text-right text-muted tnum font-mono text-xs">{formatTime(song.duration, false)}</td>
                 <td className="pr-3 whitespace-nowrap">
+                  <button
+                    className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    onClick={() => onSend([song])}
+                    aria-label={`Send ${song.title} to a drive or music app`}
+                    title="Send to a phone, drive or music app"
+                  >
+                    <Send size={14} />
+                  </button>
                   <button
                     className="btn-icon opacity-0 group-hover:opacity-100 focus:opacity-100"
                     onClick={() => onEdit([song])}
@@ -146,6 +157,7 @@ export default function LibraryPage() {
   const [open, setOpen] = useState<{ kind: 'artist' | 'album'; key: string } | null>(null)
   const [scanning, setScanning] = useState(false)
   const [editing, setEditing] = useState<LibrarySong[] | null>(null)
+  const [sending, setSending] = useState<LibrarySong[] | null>(null)
 
   const load = useCallback(() => api.librarySongs().then(setSongs).catch((e) => toast.error(e.message)), [])
 
@@ -285,18 +297,22 @@ export default function LibraryPage() {
             <button className="btn-secondary" onClick={() => setEditing(openGroup.songs)} title="Change the album, singer or year of every song here">
               <Pencil size={14} aria-hidden="true" /> Edit all
             </button>
+            <button className="btn-secondary" onClick={() => setSending(openGroup.songs)} title="Copy every song here to a phone, drive or music app">
+              <Send size={14} aria-hidden="true" /> Send to…
+            </button>
             <button className="btn-primary" onClick={() => playList(openGroup.songs, 0)}>
               <Play size={14} aria-hidden="true" /> Play all
             </button>
           </div>
-          <SongTable songs={openGroup.songs} showAlbum={open?.kind === 'artist'} onEdit={setEditing} />
+          <SongTable songs={openGroup.songs} showAlbum={open?.kind === 'artist'} onEdit={setEditing} onSend={setSending} />
         </section>
       ) : view === 'songs' ? (
-        <SongTable songs={filtered} onEdit={setEditing} />
+        <SongTable songs={filtered} onEdit={setEditing} onSend={setSending} />
       ) : (
         <GroupGrid groups={view === 'artists' ? artists : albums} onOpen={(g) => setOpen({ kind: view === 'artists' ? 'artist' : 'album', key: g.key })} />
       )}
       <EditTagsDialog songs={editing} onClose={() => setEditing(null)} onSave={saveTags} />
+      <SendDialog songs={sending} onClose={() => setSending(null)} />
     </div>
   )
 }

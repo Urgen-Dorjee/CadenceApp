@@ -29,6 +29,15 @@ class WebSocketManager:
         for ws in dead:
             self.disconnect(ws)
 
+    async def send_event(self, kind: str, data: dict[str, Any]):
+        """Push a message that isn't about a job, e.g. progress of copying songs."""
+        payload = json.dumps({"type": kind, "timestamp": time.time(), **data})
+        for ws in list(self.connections):
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                self.disconnect(ws)
+
     async def send_job_deleted(self, job_id: str):
         payload = json.dumps({"type": "job_deleted", "timestamp": time.time(), "job_id": job_id})
         for ws in list(self.connections):
