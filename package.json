@@ -1,6 +1,6 @@
 {
   "name": "cadence",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "type": "module",
   "description": "Split YouTube jukeboxes, movie albums and singer collections into separate, tagged songs",
   "license": "MIT",

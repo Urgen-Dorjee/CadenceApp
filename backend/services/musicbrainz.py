@@ -18,7 +18,7 @@ from services import cover
 
 API = "https://musicbrainz.org/ws/2"
 COVER_ART = "https://coverartarchive.org/release"
-USER_AGENT = "Cadence/2.1 ( https://github.com/Urgen-Dorjee/CadenceApp )"
+USER_AGENT = "Cadence/2.2 ( https://github.com/Urgen-Dorjee/CadenceApp )"
 COVER_PREFIX = "cover-musicbrainz-"  # + release id, so an earlier album's cover can be restored
 
 _lock = threading.Lock()
