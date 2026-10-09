@@ -92,7 +92,8 @@ export class PythonManager {
     })
 
     try {
-      await Promise.race([this.waitForHealth(45000), exited])
+      // The first start after installing can be slow while antivirus software checks the new files.
+      await Promise.race([this.waitForHealth(120_000), exited])
       this.healthy = true
       this.log('info', '[PythonManager] Backend is healthy')
     } catch (err) {
@@ -164,7 +165,7 @@ export class PythonManager {
       const check = () => {
         if (this.stopping) return
         if (Date.now() - startTime > timeoutMs) {
-          reject(new Error('The audio engine did not start within 45 seconds'))
+          reject(new Error('The audio engine did not start within 2 minutes'))
           return
         }
 
