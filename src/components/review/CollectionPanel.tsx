@@ -48,9 +48,11 @@ export default function CollectionPanel({
 
   return (
     <section className="panel p-4 flex flex-col gap-4" aria-label="What is this video?">
-      <fieldset className="flex flex-col gap-2" disabled={disabled}>
-        <legend className="eyebrow mb-2">What is this video?</legend>
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-2" role="radiogroup">
+      <fieldset className="flex items-center gap-3 flex-wrap" disabled={disabled}>
+        <legend className="sr-only">What is this video?</legend>
+        <span className="eyebrow" aria-hidden="true">This video is</span>
+        {/* A compact selector: the choice matters, but it shouldn't fill the screen. */}
+        <div className="inline-flex p-0.5 rounded-lg bg-sunken ring-1 ring-inset ring-line" role="radiogroup" aria-label="What is this video?">
           {TYPES.map((t) => (
             <button
               key={t.value}
@@ -58,18 +60,19 @@ export default function CollectionPanel({
               role="radio"
               aria-checked={collection.type === t.value}
               onClick={() => setType(t.value)}
+              title={t.hint}
               className={clsx(
-                'text-left rounded-md border px-3 py-2 transition-colors',
+                'h-7 px-3 rounded-md text-[12.5px] font-medium transition-all',
                 collection.type === t.value
-                  ? 'border-accent bg-accent/10'
-                  : 'border-line hover:border-faint',
+                  ? 'bg-raised text-ink shadow-sm ring-1 ring-line-strong'
+                  : 'text-muted hover:text-ink',
               )}
             >
-              <span className="block text-sm font-medium">{t.label}</span>
-              <span className="block text-xs text-muted">{t.hint}</span>
+              {t.label}
             </button>
           ))}
         </div>
+        <span className="text-xs text-faint">{TYPES.find((t) => t.value === collection.type)?.hint}</span>
       </fieldset>
 
       <fieldset className="grid grid-cols-1 md:grid-cols-[1fr_1fr_110px] gap-3" disabled={disabled}>
@@ -126,7 +129,8 @@ export default function CollectionPanel({
         )}
       </fieldset>
 
-      <div className="flex items-center gap-3 rounded-md bg-sunken border border-line px-3 py-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="flex items-center gap-3 rounded-md bg-sunken border border-line px-3 py-2 min-w-0">
         <FolderOutput size={15} className="shrink-0 text-muted" aria-hidden="true" />
         <div className="flex-1 min-w-0 text-xs">
           <p className="text-muted">
@@ -148,7 +152,7 @@ export default function CollectionPanel({
         </button>
       </div>
 
-      <div className="flex items-center gap-3 rounded-md bg-sunken border border-line px-3 py-2">
+      <div className="flex items-center gap-3 rounded-md bg-sunken border border-line px-3 py-2 min-w-0">
         {coverUrl ? (
           <img
             src={coverUrl}
@@ -180,6 +184,7 @@ export default function CollectionPanel({
         <button type="button" className="btn-secondary h-7 px-2.5" onClick={onChangeCover} disabled={disabled}>
           Change cover…
         </button>
+      </div>
       </div>
     </section>
   )
