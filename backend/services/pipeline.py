@@ -16,7 +16,7 @@ from config import load_preferences, settings
 from core.db import get_store
 from core.websocket_manager import manager as ws
 from services import (
-    audio_analysis, audio_profile, cover, exporter, identify, library, local_media, loudness, lyrics, name_cleanup,
+    audio_analysis, audio_profile, cover, credits, exporter, identify, library, local_media, loudness, lyrics, name_cleanup,
     playlist,
     song_index,
     tracklist, youtube,
@@ -250,9 +250,16 @@ async def _analyze_video(job_id: str, info: dict[str, Any], out_dir: str, loop: 
         "description": info.get("description") or "",
     }
 
-    await _find_songs(
-        job_id, loop, out_dir, source, tracks, title, info.get("uploader") or info.get("channel") or "", 80.0,
-    )
+    # The singer from the description's credits, never a fan channel's name.
+    found = credits.parse_credits(source["description"])
+    singer = credits.singer_for(info)
+    year = found["year"]
+    hint = {
+        # A collection gets an album singer only when the credits name one.
+        "artist": singer if len(found["singers"]) <= 1 else "",
+        "year": year, "song": found["song"], "film": found["album"],
+    }
+    await _find_songs(job_id, loop, out_dir, source, tracks, title, singer, 80.0, hint)
 
 
 async def _find_songs(
@@ -305,7 +312,9 @@ async def _find_songs(
     if hint and hint.get("year") and not collection.get("year"):
         collection["year"] = hint["year"]
     if collection["type"] == "single" and tracks:
-        tracks[0]["title"] = tracklist.clean_title(title)
+        tracks[0]["title"] = (hint or {}).get("song") or tracklist.clean_title(title)
+        if hint and hint.get("film") and not collection.get("album"):
+            collection["album"] = hint["film"]
 
     if prefs.tidy_names and prefs.anthropic_api_key:
         await _update(job_id, progress=98, message="Tidying names with Claude")
@@ -350,14 +359,17 @@ async def _analyze_playlist(job_id: str, info: dict[str, Any], out_dir: str, loo
             "url": url, "duration": duration, "path": downloaded["_audio_path"],
             "thumbnail": downloaded.get("_thumbnail_path"),
         })
+        found = credits.parse_credits(downloaded.get("description") or "")
         tracks.append(tracklist.make_track(
-            title=tracklist.clean_title(downloaded.get("title") or entry.get("title") or f"Track {i + 1}"),
-            start=0, end=duration, origin="playlist", source_id=downloaded["id"],
+            title=found["song"] or tracklist.clean_title(downloaded.get("title") or entry.get("title") or f"Track {i + 1}"),
+            start=0, end=duration, origin="playlist", source_id=downloaded["id"], artist=credits.singer_for(downloaded),
         ))
 
     if not tracks:
         raise RuntimeError("None of the videos in this playlist could be downloaded.")
-    collection = tracklist.classify_collection(title, len(tracks), info.get("uploader") or info.get("channel") or "")
+    collection = tracklist.classify_collection(
+        title, len(tracks), credits.artist_channel(info.get("uploader") or info.get("channel") or ""),
+    )
     await _update(
         job_id, status="review", progress=100, sources=sources, tracks=tracks, collection=collection,
         thumbnail=sources[0]["thumbnail"], message=_review_message(tracks),
