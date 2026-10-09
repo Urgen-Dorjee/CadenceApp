@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Sequence
 
 from config import settings
 
@@ -31,6 +31,14 @@ CREATE TABLE IF NOT EXISTS jobs (
     outputs     TEXT NOT NULL DEFAULT '[]',
     created_at  REAL NOT NULL,
     updated_at  REAL NOT NULL
+);
+
+-- YouTube videos whose songs were saved, kept after the split is removed from the list,
+-- so a playlist or channel can show which videos were done before.
+CREATE TABLE IF NOT EXISTS saved_videos (
+    video_id  TEXT PRIMARY KEY,
+    title     TEXT NOT NULL DEFAULT '',
+    saved_at  REAL NOT NULL
 );
 """
 
@@ -104,6 +112,23 @@ class JobStore:
             self._conn.execute(f"UPDATE jobs SET {', '.join(cols)} WHERE id = ?", values)
             self._conn.commit()
         return self.get(job_id)
+
+    def remember_saved_videos(self, videos: Sequence[tuple[str, str]]) -> None:
+        """Record (video id, title) pairs whose songs were saved."""
+        if not videos:
+            return
+        now = time.time()
+        with self._lock:
+            self._conn.executemany(
+                "INSERT INTO saved_videos (video_id, title, saved_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(video_id) DO UPDATE SET title = excluded.title, saved_at = excluded.saved_at",
+                [(vid, title, now) for vid, title in videos],
+            )
+            self._conn.commit()
+
+    def saved_video_ids(self) -> set[str]:
+        with self._lock:
+            return {row["video_id"] for row in self._conn.execute("SELECT video_id FROM saved_videos")}
 
     def delete(self, job_id: str) -> None:
         with self._lock:

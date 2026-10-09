@@ -12,7 +12,7 @@ from core.websocket_manager import manager as ws
 from config import load_preferences
 from services import (
     audio_analysis, audio_profile, cover, duplicates, identify, local_media, musicbrainz, name_cleanup, pipeline, song_index,
-    tracklist,
+    tracklist, youtube,
 )
 
 router = APIRouter()
@@ -109,8 +109,46 @@ class AlbumApplyIn(BaseModel):
     cover: bool = True
 
 
+class LinkIn(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("url")
+    @classmethod
+    def youtube_only(cls, v: str) -> str:
+        v = v.strip()
+        if not _YOUTUBE_RE.match(v):
+            raise ValueError("Paste a YouTube playlist or channel link.")
+        return v
+
+
 class TracklistIn(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
+
+
+@router.post("/links/expand")
+async def expand_link(body: LinkIn):
+    """The videos of a playlist or channel link, each marked "saved" (its songs were saved before)
+    or "in_list" (a split for it is already in the list). A plain video link gives kind "video"."""
+    kind = youtube.link_kind(body.url)
+    if kind == "video":
+        return {"kind": "video", "title": "", "entries": []}
+    try:
+        listed = await youtube.list_videos(body.url)
+    except Exception as e:  # noqa: BLE001 - yt-dlp errors are shown in plain words
+        raise HTTPException(status_code=422, detail=pipeline.friendly_error(e)) from e
+    store = get_store()
+    saved = store.saved_video_ids()
+    in_list = set()
+    for job in store.list():
+        if job["status"] in ("failed", "cancelled"):
+            continue
+        in_list.update(s["id"] for s in job["sources"] if not s.get("local"))
+        if vid := youtube.video_id(job["url"]):
+            in_list.add(vid)
+    for entry in listed["entries"]:
+        entry["url"] = youtube.watch_url(entry["id"])
+        entry["state"] = "in_list" if entry["id"] in in_list else "saved" if entry["id"] in saved else ""
+    return listed
 
 
 def _get_job(job_id: str) -> dict:

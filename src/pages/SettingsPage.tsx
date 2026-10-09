@@ -333,6 +333,24 @@ export default function SettingsPage() {
           </Row>
 
           <Row
+            title="Splits at a time"
+            hint="How many links are downloaded and split at the same time when you start several, or a playlist or channel. More is faster on a fast connection."
+            htmlFor="parallel-splits"
+          >
+            <select
+              id="parallel-splits"
+              className="field w-44"
+              value={prefs.parallel_splits ?? 2}
+              onChange={(e) => save({ parallel_splits: Number(e.target.value) })}
+            >
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? 'One at a time' : `${n} at a time`}{n === 2 ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row
             title="Keep downloaded audio after saving"
             hint="Lets you change cuts and save a split again later. Turn off to save disk space."
             htmlFor="keep-downloads"

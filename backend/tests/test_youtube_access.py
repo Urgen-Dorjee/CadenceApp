@@ -59,4 +59,4 @@ def test_settings_validation(client, tmp_path, patch, ok):
     ("Failed to decrypt with DPAPI", "Close the browser"),
 ])
 def test_friendly_sign_in_errors(message, expected):
-    assert expected in pipeline._friendly_error(Exception(message))
+    assert expected in pipeline.friendly_error(Exception(message))

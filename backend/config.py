@@ -95,6 +95,8 @@ class Preferences(BaseModel):
     # Tidy song/album names with Claude after analysis (sends only text, never audio).
     tidy_names: bool = False
     anthropic_api_key: str = ""
+    # How many splits are downloaded and analysed at the same time (1-4).
+    parallel_splits: int = 2
     audio_format: str = "mp3"
     # kbps for lossy formats; ignored for flac
     audio_bitrate: int = 320

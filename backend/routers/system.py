@@ -56,11 +56,14 @@ async def update_preferences(prefs: Preferences):
         raise HTTPException(status_code=422, detail="Target loudness must be between -30 and -5 LUFS")
     if not (0 <= prefs.song_fade_in_s <= 10 and 0 <= prefs.song_fade_out_s <= 10):
         raise HTTPException(status_code=422, detail="Fades must be between 0 and 10 seconds")
+    if not 1 <= prefs.parallel_splits <= 4:
+        raise HTTPException(status_code=422, detail="Splits at a time must be between 1 and 4")
     if prefs.save_mode not in ("library", "ask"):
         raise HTTPException(status_code=422, detail="Save mode must be library or ask")
     if not os.path.isabs(prefs.library_dir):
         raise HTTPException(status_code=422, detail="Library folder must be a full path")
     save_preferences(prefs)
+    await pipeline.analyze_limit_changed()
     return prefs
 
 
