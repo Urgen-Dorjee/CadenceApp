@@ -2,7 +2,7 @@
 # Start the packaged backend the way Cadence does and call its health check.
 # Also runs the bundled FFmpeg and Deno. Usage: scripts/smoke-backend.sh <app resources folder>
 set -uo pipefail
-res="$1"
+res=$(cd "$1" && pwd)  # absolute: the backend starts from its own folder
 backend="$res/backend"
 data=$(mktemp -d)
 port=48765
