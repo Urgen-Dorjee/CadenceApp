@@ -1,5 +1,8 @@
 import asyncio
+import logging
 import os
+import uuid
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -7,7 +10,8 @@ from fastapi.responses import FileResponse, Response
 
 from config import load_preferences
 from core.db import get_store
-from services import song_index, tag_edit
+from core.websocket_manager import manager as ws
+from services import send_to, song_index, tag_edit
 
 router = APIRouter()
 
@@ -108,3 +112,69 @@ async def song_cover(song_id_: str):
         raise HTTPException(status_code=404, detail="No cover art")
     data, mime = cover
     return Response(content=data, media_type=mime, headers={"Cache-Control": "max-age=86400"})
+
+
+_send_tasks: set[asyncio.Task] = set()
+
+
+class SendSongs(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=20000)
+    # "folder": a folder or drive the user chose; "music_app": Apple Music / iTunes.
+    target: Literal["folder", "music_app"] = "folder"
+    destination: str = Field(default="", max_length=1000)
+    layout: Literal["folders", "flat"] = "folders"
+    to_mp3: bool = False
+
+
+@router.get("/library/music-app")
+async def music_app():
+    """The Apple Music / iTunes folder that imports songs copied into it, if the app is installed."""
+    found = await asyncio.to_thread(send_to.music_app_folder)
+    return {"folder": found[0], "name": found[1]} if found else {"folder": None, "name": None}
+
+
+@router.post("/library/send")
+async def send_songs(body: SendSongs):
+    """Copy songs to a folder or drive, or into Apple Music / iTunes, in the background.
+    Progress arrives as "send" messages on the WebSocket; returns the task id."""
+    if body.target == "music_app":
+        found = await asyncio.to_thread(send_to.music_app_folder)
+        if not found:
+            raise HTTPException(status_code=422, detail="Apple Music or iTunes isn't installed.")
+        destination, layout, to_mp3, formats = found[0], "flat", False, send_to.MUSIC_APP_FORMATS
+    else:
+        destination, layout, to_mp3, formats = body.destination, body.layout, body.to_mp3, None
+        if not os.path.isabs(destination) or not os.path.isdir(destination):
+            raise HTTPException(status_code=422, detail="Choose a folder or drive to copy to.")
+    index = song_index.get_index()
+    songs = [s for s in (index.get(i) for i in body.ids) if s]
+    if not songs:
+        raise HTTPException(status_code=404, detail="Those songs aren't in the library any more.")
+    task_id = uuid.uuid4().hex[:12]
+    task = asyncio.create_task(_send(task_id, songs, destination, layout, to_mp3, formats))
+    _send_tasks.add(task)  # keep a reference until it finishes
+    task.add_done_callback(_send_tasks.discard)
+    return {"task_id": task_id, "total": len(songs), "destination": destination}
+
+
+async def _send(task_id: str, songs: list[dict], destination: str, layout: str, to_mp3: bool, formats: set[str] | None) -> None:
+    counts = {"copied": 0, "skipped": 0, "failed": 0}
+    errors: list[str] = []
+    for i, song in enumerate(songs):
+        await ws.send_event("send", {"task_id": task_id, "done": i, "total": len(songs), "current": song["title"], **counts})
+        # Apple Music / iTunes only take MP3 and M4A: convert other formats for them.
+        convert = to_mp3 or (formats is not None and song.get("format") not in formats)
+        try:
+            result = await asyncio.to_thread(send_to.copy_song, song, destination, layout, convert)
+            counts[result] += 1
+        except send_to.SendError as e:
+            counts["failed"] += 1
+            errors.append(f"{song['title']}: {e}")
+        except Exception as e:  # noqa: BLE001 - keep going with the other songs
+            logging.getLogger(__name__).exception("Copying %s failed", song["path"])
+            counts["failed"] += 1
+            errors.append(f"{song['title']}: {e}")
+    await ws.send_event("send", {
+        "task_id": task_id, "done": len(songs), "total": len(songs), "finished": True,
+        "destination": destination, "errors": errors[:5], **counts,
+    })

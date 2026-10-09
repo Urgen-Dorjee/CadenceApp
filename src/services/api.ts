@@ -89,6 +89,22 @@ export interface StorageInfo {
   work_dir: string
 }
 
+/** Progress of copying songs (WebSocket "send" messages). */
+export interface SendProgress {
+  task_id: string
+  done: number
+  total: number
+  copied: number
+  skipped: number
+  failed: number
+  current?: string
+  finished?: boolean
+  destination?: string
+  errors?: string[]
+}
+
+export const SEND_EVENT = 'cadence:send'
+
 export interface LibrarySong {
   id: string
   path: string
@@ -137,6 +153,9 @@ export const api = {
   librarySongs: (sort = 'artist') => request<LibrarySong[]>('GET', `/api/library/songs?sort=${sort}`),
   editSongs: (ids: string[], changes: TagChanges) => request<LibrarySong[]>('PUT', '/api/library/songs', { ids, changes }),
   scanLibrary: () => request<{ added: number; updated: number; removed: number; total: number }>('POST', '/api/library/scan'),
+  musicApp: () => request<{ folder: string | null; name: string | null }>('GET', '/api/library/music-app'),
+  sendSongs: (body: { ids: string[]; target: 'folder' | 'music_app'; destination?: string; layout?: 'folders' | 'flat'; to_mp3?: boolean }) =>
+    request<{ task_id: string; total: number; destination: string }>('POST', '/api/library/send', body),
   songAudioUrl: (id: string) => mediaUrl(`/api/library/songs/${id}/audio`),
   songCoverUrl: (id: string) => mediaUrl(`/api/library/songs/${id}/cover`),
   storage: () => request<StorageInfo>('GET', '/api/storage'),
