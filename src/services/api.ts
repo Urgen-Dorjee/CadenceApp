@@ -1,4 +1,5 @@
 import type { Collection, Job, Preferences, Track } from '../types/job'
+import type { AlbumDetails, AlbumRelease } from '../lib/albumDetails'
 
 let baseURL = ''
 let token = ''
@@ -122,6 +123,10 @@ export const api = {
     ),
   setCover: (id: string, path: string) => request<Job>('POST', `/api/jobs/${id}/cover`, { path }),
   resetCover: (id: string) => request<Job>('DELETE', `/api/jobs/${id}/cover`),
+  searchAlbums: (id: string, album: string, artist: string) =>
+    request<{ releases: AlbumRelease[] }>('POST', `/api/jobs/${id}/album-search`, { album, artist }),
+  applyAlbum: (id: string, releaseId: string, cover: boolean) =>
+    request<AlbumDetails & { cover: boolean; job: Job }>('POST', `/api/jobs/${id}/album-apply`, { release_id: releaseId, cover }),
   retryJob: (id: string) => request<Job>('POST', `/api/jobs/${id}/retry`),
   cancelJob: (id: string) => request<{ status: string }>('POST', `/api/jobs/${id}/cancel`),
   deleteJob: (id: string) => request<{ status: string }>('DELETE', `/api/jobs/${id}`),
@@ -143,5 +148,5 @@ export const api = {
       `/api/jobs/${jobId}/sources/${sourceId}/peaks?start=${start.toFixed(3)}&end=${end.toFixed(3)}&points=${points}`,
     ),
   sourceAudioUrl: (jobId: string, sourceId: string) => mediaUrl(`/api/jobs/${jobId}/sources/${sourceId}/audio`),
-  thumbnailUrl: (jobId: string, updatedAt: number) => `${mediaUrl(`/api/jobs/${jobId}/thumbnail`)}&v=${Math.floor(updatedAt)}`,
+  thumbnailUrl: (jobId: string, updatedAt: number) => `${mediaUrl(`/api/jobs/${jobId}/thumbnail`)}&v=${updatedAt}`,
 }

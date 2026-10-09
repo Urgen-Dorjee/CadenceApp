@@ -61,6 +61,7 @@ xattr -cr /Applications/Cadence.app
 - **Proper tags.** Title, artist, album artist, album, year, track number and cover art in MP3, M4A (AAC), Opus or FLAC.
 - **Even loudness.** ReplayGain tags (audio untouched) or one fixed gain per song to a target loudness, measured to EBU R128. Silence at song edges is trimmed.
 - **Organised library.** Configurable folder layouts per collection type, and a built-in Library with search, cover art and a player.
+- **Album details from MusicBrainz.** Look up a movie or album to fill in its name, year, singer and cover art, and every song name when the track count matches. No key needed.
 - **Optional naming helpers.** Identify songs by sound with AcoustID, or tidy messy names with AI.
 - **Resilient.** Jobs persist across restarts, the audio engine restarts itself if it crashes, and the app updates itself in the background.
 - **Themes.** Dark (default), Light or follow Windows.
@@ -125,6 +126,8 @@ When a video has no tracklist, songs start out as "Track 1", "Track 2"… Two op
 | **Tidy names (AI)** | Cleans titles like "Song (Official Audio) \| Channel", fills in singers and album from the description, picks the collection type | Text only (title, channel, description, song names). Never audio | Anthropic API key, about 1–5 US cents per split |
 
 Both can run automatically after a split or from buttons on the review screen. Both can be undone. Keys are entered in **Settings** and stored locally in `preferences.json`.
+
+**Find album details** (for a movie album, next to the album name) needs no key. It searches [MusicBrainz](https://musicbrainz.org) for the album name (and singer, if typed), lists the matching albums with their cover, year and number of songs, and fills in the chosen album's name, year, album singer and cover art from the [Cover Art Archive](https://coverartarchive.org). When the album has the same number of songs as the split, it also names every song and its singers, in order. Only the names you type are sent. **Undo** puts everything back, including the cover.
 
 ## Where songs go
 

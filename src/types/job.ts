@@ -22,7 +22,7 @@ export interface Track {
   confidence: number
   include: boolean
   /** Set when the name came from a lookup, e.g. AcoustID. */
-  match?: { source: 'acoustid' | 'claude'; score?: number; album?: string } | null
+  match?: { source: 'acoustid' | 'claude' | 'musicbrainz'; score?: number; album?: string } | null
 }
 
 export type CollectionType = 'artist' | 'album' | 'collection' | 'single'

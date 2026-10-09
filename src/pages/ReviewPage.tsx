@@ -21,6 +21,8 @@ import CutCloseUp from '../components/review/CutCloseUp'
 import TrackRow from '../components/review/TrackRow'
 import CollectionPanel from '../components/review/CollectionPanel'
 import TracklistDialog from '../components/review/TracklistDialog'
+import AlbumLookupDialog, { type AlbumChoice } from '../components/review/AlbumLookupDialog'
+import { applyAlbumDetails } from '../lib/albumDetails'
 import ShortcutsDialog from '../components/review/ShortcutsDialog'
 import SaveAgainDialog from '../components/review/SaveAgainDialog'
 
@@ -43,6 +45,7 @@ export default function ReviewPage() {
   const [identifying, setIdentifying] = useState(false)
   const [tidying, setTidying] = useState(false)
   const [tracklistOpen, setTracklistOpen] = useState(false)
+  const [albumOpen, setAlbumOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [saveAgainOpen, setSaveAgainOpen] = useState(false)
   const job = useJobsStore((s) => s.jobs[id])
@@ -216,7 +219,7 @@ export default function ReviewPage() {
   onKeyRef.current = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement
     const typing = Boolean(el.closest('input:not([type=checkbox]):not([type=range]), textarea, select, [contenteditable="true"]'))
-    if (shortcutsOpen || tracklistOpen || saveAgainOpen || exporting || el.closest('[role="dialog"]')) return
+    if (shortcutsOpen || tracklistOpen || albumOpen || saveAgainOpen || exporting || el.closest('[role="dialog"]')) return
     const key = e.key.toLowerCase()
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === 'z' || key === 'y')) {
       if (typing) return // the field's own undo
@@ -383,6 +386,44 @@ export default function ReviewPage() {
     } finally {
       setTidying(false)
     }
+  }
+
+  /** Use an album from MusicBrainz: its name, singer and year, its song names if chosen, and its cover. */
+  const applyAlbum = async ({ release, useSongNames, useCover }: AlbumChoice) => {
+    const before = history.present
+    const coverBefore = job?.cover ?? ''
+    const details = await api.applyAlbum(id, release.id, useCover)
+    useJobsStore.getState().upsert(details.job)
+    const result = applyAlbumDetails(tracks, collection, details, useSongNames)
+    change((d) => ({ ...d, tracks: result.tracks, collection: result.collection }))
+    const parts = [
+      'album details',
+      result.named ? `${result.named} song name${result.named === 1 ? '' : 's'}` : '',
+      details.cover ? 'cover' : '',
+    ].filter(Boolean)
+    toast.success(
+      (t) => (
+        <span className="flex items-center gap-3">
+          Used {parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]} from “{details.album}”
+          <button
+            className="text-accent font-medium hover:underline"
+            onClick={() => {
+              change(() => before)
+              toast.dismiss(t.id)
+              if (details.cover) {
+                // The cover isn't part of the draft: put the previous one back too.
+                const restore = coverBefore ? api.setCover(id, coverBefore) : api.resetCover(id)
+                restore.then(useJobsStore.getState().upsert).catch((e: Error) => toast.error(e.message))
+              }
+            }}
+          >
+            Undo
+          </button>
+        </span>
+      ),
+      { duration: 8000 },
+    )
+    if (useCover && !details.cover) toast("This album has no cover art on MusicBrainz, so the cover wasn't changed.")
   }
 
   /** Replace the songs with a pasted tracklist. Throws so the dialog can show what's wrong. */
@@ -565,7 +606,8 @@ export default function ReviewPage() {
           onChooseFolder={chooseFolder}
           onResetFolder={() => setFolder('')}
           coverUrl={job.thumbnail ? api.thumbnailUrl(job.id, job.updated_at) : null}
-          customCover={Boolean(job.cover)}
+          coverSource={!job.cover ? 'video' : /cover-musicbrainz-[0-9a-f-]+\.jpg$/.test(job.cover) ? 'musicbrainz' : 'custom'}
+          onFindAlbum={() => setAlbumOpen(true)}
           squareCover={prefs?.square_cover ?? true}
           onChangeCover={changeCover}
           onResetCover={resetCover}
@@ -733,6 +775,15 @@ export default function ReviewPage() {
             </table>
           </div>
           <TracklistDialog open={tracklistOpen} onOpenChange={setTracklistOpen} onImport={importTracklist} />
+          <AlbumLookupDialog
+            open={albumOpen}
+            onOpenChange={setAlbumOpen}
+            initialAlbum={collection.album || collection.name || job.title || ''}
+            initialArtist={collection.artist}
+            includedCount={tracks.filter((t) => t.include).length}
+            onSearch={async (album, artist) => (await api.searchAlbums(id, album, artist)).releases}
+            onApply={applyAlbum}
+          />
           <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
           <SaveAgainDialog open={saveAgainOpen} onOpenChange={setSaveAgainOpen} savedCount={job.outputs.length} onChoose={exportSongs} />
           <p className="text-xs text-faint flex items-center gap-2 flex-wrap">
