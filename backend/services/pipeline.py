@@ -10,7 +10,7 @@ import os
 import shutil
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from config import load_preferences, settings
 from core.db import get_store
@@ -24,7 +24,31 @@ from services import (
 
 log = logging.getLogger(__name__)
 
-_analyze_slots = asyncio.Semaphore(2)
+class _Slots:
+    """At most `limit()` holders at once; the limit is read each time, so a new setting
+    applies to splits waiting to start."""
+
+    def __init__(self, limit: Callable[[], int]):
+        self._limit = limit
+        self._busy = 0
+        self._changed = asyncio.Condition()
+
+    async def __aenter__(self) -> None:
+        async with self._changed:
+            await self._changed.wait_for(lambda: self._busy < max(1, self._limit()))
+            self._busy += 1
+
+    async def __aexit__(self, *exc: object) -> None:
+        async with self._changed:
+            self._busy -= 1
+            self._changed.notify_all()
+
+    async def limit_changed(self) -> None:
+        async with self._changed:
+            self._changed.notify_all()
+
+
+_analyze_slots = _Slots(lambda: load_preferences().parallel_splits)
 _export_slots = asyncio.Semaphore(1)
 _cancel_flags: dict[str, threading.Event] = {}
 _running: dict[str, asyncio.Task] = {}
@@ -60,6 +84,14 @@ def _start(job_id: str, coro) -> None:
 
 def is_running(job_id: str) -> bool:
     return job_id in _running
+
+
+async def analyze_limit_changed() -> None:
+    """Let waiting splits start if "splits at a time" was raised."""
+    try:
+        await _analyze_slots.limit_changed()
+    except RuntimeError:
+        pass  # no split has waited yet (the condition isn't tied to this event loop)
 
 
 def start_analysis(job_id: str) -> None:
@@ -140,7 +172,7 @@ async def _analyze(job_id: str) -> None:
         await _update(job_id, status="cancelled", message="Cancelled", progress=0)
     except Exception as e:  # noqa: BLE001 - shown to the user, full trace in the log
         log.exception("Analysis failed for job %s", job_id)
-        await _update(job_id, status="failed", error=_friendly_error(e), message="")
+        await _update(job_id, status="failed", error=friendly_error(e), message="")
 
 
 def is_local(url: str) -> bool:
@@ -495,6 +527,8 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             sources_after = job["sources"]
             if not prefs.keep_downloads:
                 sources_after = await remove_downloads(job_id, job["sources"])
+            # Remember the videos, so playlists and channels can show what was saved before.
+            store.remember_saved_videos([(src["id"], src.get("title", "")) for src in job["sources"] if not src.get("local")])
             await _update(
                 job_id, status="completed", progress=100, outputs=outputs, sources=sources_after, playlist=playlist_file,
                 message=f"Saved {len(outputs)} song{'s' if len(outputs) != 1 else ''} to {folder}"
@@ -505,10 +539,10 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
         await _update(job_id, status="review", progress=0, message="Export cancelled. Songs already saved were kept.")
     except Exception as e:  # noqa: BLE001
         log.exception("Export failed for job %s", job_id)
-        await _update(job_id, status="review", error=_friendly_error(e), message="Export failed")
+        await _update(job_id, status="review", error=friendly_error(e), message="Export failed")
 
 
-def _friendly_error(e: Exception) -> str:
+def friendly_error(e: Exception) -> str:
     text = str(e).replace("ERROR: ", "").strip()
     lowered = text.lower()
     if "private video" in lowered:

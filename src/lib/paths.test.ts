@@ -3,6 +3,7 @@ import type { Preferences, Track } from '../types/job'
 import { breakablePath, folderOf, previewPath } from './paths'
 
 const prefs: Preferences = {
+  parallel_splits: 2,
   library_dir: 'C:\\Users\\me\\Music\\Cadence',
   save_mode: 'library',
   open_when_done: true,

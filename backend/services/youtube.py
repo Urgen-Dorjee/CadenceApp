@@ -3,6 +3,8 @@
 import asyncio
 import glob
 import os
+import re
+import urllib.parse
 from typing import Any, Callable
 
 import yt_dlp
@@ -48,6 +50,74 @@ def _extract(url: str, extra: dict[str, Any]) -> dict[str, Any]:
 async def resolve(url: str) -> dict[str, Any]:
     """Metadata for a video or playlist. Playlist entries are listed but not expanded."""
     return await asyncio.to_thread(_extract, url, {"skip_download": True, "extract_flat": "in_playlist"})
+
+
+# Channel pages: youtube.com/@name, /channel/UC..., /c/name, /user/name (optionally with a tab).
+_CHANNEL_RE = re.compile(r"^/(@[^/]+|channel/[^/]+|c/[^/]+|user/[^/]+)(/[^/]*)?/?$")
+MAX_LISTED = 500
+
+
+def video_id(url: str) -> str | None:
+    """The video id of a watch, youtu.be, shorts or live link, else None."""
+    parts = urllib.parse.urlparse(url.strip())
+    host = parts.netloc.lower().split(":")[0]
+    if host.endswith("youtu.be"):
+        return parts.path.strip("/").split("/")[0] or None
+    query = urllib.parse.parse_qs(parts.query)
+    if query.get("v"):
+        return query["v"][0]
+    m = re.match(r"^/(?:shorts|live|embed)/([^/?]+)", parts.path)
+    return m.group(1) if m else None
+
+
+def link_kind(url: str) -> str:
+    """"video", "playlist" (a list= link, even with a video in it) or "channel"."""
+    parts = urllib.parse.urlparse(url.strip())
+    if "list" in urllib.parse.parse_qs(parts.query):
+        return "playlist"
+    if _CHANNEL_RE.match(parts.path) and not video_id(url):
+        return "channel"
+    return "video"
+
+
+def watch_url(vid: str) -> str:
+    return f"https://www.youtube.com/watch?v={vid}"
+
+
+def _videos_tab(url: str) -> str:
+    """A channel link pointing at its Videos tab (the home tab mixes shelves and shorts)."""
+    parts = urllib.parse.urlparse(url.strip())
+    m = _CHANNEL_RE.match(parts.path)
+    if not m:
+        return url
+    return urllib.parse.urlunparse(parts._replace(path=f"/{m.group(1)}/videos", query="", fragment=""))
+
+
+def _list_url(url: str) -> str:
+    """The playlist itself for a watch?v=...&list=... link."""
+    parts = urllib.parse.urlparse(url.strip())
+    playlist = urllib.parse.parse_qs(parts.query).get("list")
+    if playlist and video_id(url):
+        return f"https://www.youtube.com/playlist?list={playlist[0]}"
+    return url
+
+
+async def list_videos(url: str) -> dict[str, Any]:
+    """The videos of a playlist or channel, without downloading: {title, kind, entries: [{id, title, duration}]}."""
+    kind = link_kind(url)
+    target = _videos_tab(url) if kind == "channel" else _list_url(url)
+    info = await asyncio.to_thread(
+        _extract, target, {"skip_download": True, "extract_flat": "in_playlist", "playlistend": MAX_LISTED},
+    )
+    entries = []
+    for e in info.get("entries") or []:
+        if not e or not e.get("id") or e.get("ie_key") not in (None, "Youtube"):
+            continue  # skip nested playlists or channel shelves
+        if (e.get("title") or "").strip() in ("[Private video]", "[Deleted video]"):
+            continue
+        entries.append({"id": e["id"], "title": e.get("title") or "", "duration": float(e.get("duration") or 0)})
+    title = (info.get("channel") or info.get("uploader")) if kind == "channel" else info.get("title")
+    return {"title": title or info.get("title") or "", "kind": kind, "entries": entries}
 
 
 async def fetch_comments(url: str, limit: int = 40) -> list[dict[str, Any]]:

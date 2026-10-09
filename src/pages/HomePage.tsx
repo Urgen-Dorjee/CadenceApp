@@ -7,7 +7,9 @@ import { useAppStore } from '../stores/appStore'
 import { sortedJobs, useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
 import JobCard from '../components/jobs/JobCard'
+import PlaylistDialog, { type PlaylistChoice } from '../components/PlaylistDialog'
 import { newLinks, readyToSave, youtubeLinks } from '../lib/batch'
+import { linkKind } from '../lib/playlists'
 import type { Collection } from '../types/job'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
@@ -98,7 +100,8 @@ export default function HomePage() {
       }
     }
     setSubmitting(false)
-    if (started > 1) toast.success(`Started ${started} splits. They're worked on two at a time.`)
+    const atOnce = usePrefsStore.getState().prefs?.parallel_splits ?? 2
+    if (started > 1) toast.success(`Started ${started} splits. They're worked on ${atOnce === 1 ? 'one at a time' : `${atOnce} at a time`}.`)
     failures.forEach((f) => toast.error(f))
     return started
   }
@@ -111,9 +114,28 @@ export default function HomePage() {
     const fresh = newLinks(links, Object.values(useJobsStore.getState().jobs))
     const skipped = links.length - fresh.length
     if (skipped) toast(`${skipped === 1 ? 'One link is' : `${skipped} links are`} already in your list.`)
-    await startAll(fresh.map((u) => ({ url: u })))
+    // Playlists and channels open a dialog to choose how to split them, one after another.
+    const lists = fresh.filter((u) => linkKind(u) !== 'video')
+    await startAll(fresh.filter((u) => linkKind(u) === 'video').map((u) => ({ url: u })))
+    if (lists.length) setPlaylistQueue((queue) => [...queue, ...lists])
     setUrl('')
     setClipboardLinks([])
+  }
+
+  const [playlistQueue, setPlaylistQueue] = useState<string[]>([])
+  const listLink = useCallback((link: string) => api.expandLink(link), [])
+  const startPlaylist = async (choice: PlaylistChoice) => {
+    if (choice.mode === 'each') {
+      if (!(await startAll(choice.urls.map((u) => ({ url: u }))))) throw new Error("None of these videos could be started.")
+      return
+    }
+    let target = choice.url
+    if (choice.mode === 'single') {
+      const parsed = new URL(choice.url)
+      const video = parsed.searchParams.get('v') ?? parsed.pathname.slice(1)
+      target = `https://www.youtube.com/watch?v=${video}`
+    }
+    if (!(await startAll([{ url: target }]))) throw new Error("That couldn't be started.")
   }
 
   /** Split audio or video files from this computer. The files themselves are never changed. */
@@ -302,6 +324,12 @@ export default function HomePage() {
           ))}
         </section>
       )}
+      <PlaylistDialog
+        link={playlistQueue[0] ?? null}
+        onClose={() => setPlaylistQueue((queue) => queue.slice(1))}
+        onList={listLink}
+        onStart={startPlaylist}
+      />
     </div>
   )
 }

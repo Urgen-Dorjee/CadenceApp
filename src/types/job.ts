@@ -76,6 +76,8 @@ export interface Job {
 }
 
 export interface Preferences {
+  /** Splits downloaded and analysed at the same time (1-4). */
+  parallel_splits: number
   library_dir: string
   save_mode: 'library' | 'ask'
   open_when_done: boolean

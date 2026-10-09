@@ -1,4 +1,5 @@
 import type { Collection, Job, Preferences, Track } from '../types/job'
+import type { ListedLink } from '../lib/playlists'
 
 let baseURL = ''
 let token = ''
@@ -120,6 +121,7 @@ export const api = {
       `/api/jobs/${id}/tracklist`,
       { text },
     ),
+  expandLink: (url: string) => request<ListedLink>('POST', '/api/links/expand', { url }),
   setCover: (id: string, path: string) => request<Job>('POST', `/api/jobs/${id}/cover`, { path }),
   resetCover: (id: string) => request<Job>('DELETE', `/api/jobs/${id}/cover`),
   retryJob: (id: string) => request<Job>('POST', `/api/jobs/${id}/retry`),
