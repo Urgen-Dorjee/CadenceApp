@@ -1,9 +1,8 @@
 import asyncio
+import logging
 import os
 import re
 import shutil
-import subprocess
-import sys
 
 from fastapi import APIRouter, HTTPException
 
@@ -12,6 +11,7 @@ from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
 from services import pipeline
 from core.ffmpeg_utils import is_ffmpeg_available
+from core import ytdlp_updates
 
 router = APIRouter()
 
@@ -66,18 +66,27 @@ async def update_preferences(prefs: Preferences):
 
 @router.post("/yt-dlp/update")
 async def update_yt_dlp():
-    """Upgrade yt-dlp in place. YouTube changes often break older versions.
+    """Install the newest yt-dlp if there is one. YouTube changes often break older versions.
 
-    The new version is used after the app restarts.
+    It goes into the data folder (never inside the app) and is used after the app restarts.
     """
-    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "yt-dlp"]
-    proc = await asyncio.to_thread(
-        subprocess.run, cmd, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    )
-    if proc.returncode != 0:
+    import yt_dlp
+
+    try:
+        latest = await asyncio.to_thread(ytdlp_updates.latest_version)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Couldn't check for a new yt-dlp. Check your internet connection.")
+    have = [yt_dlp.version.__version__, ytdlp_updates.installed_version(ytdlp_updates.packages_dir(settings.data_dir))]
+    newest_here = max((v for v in have if v), key=ytdlp_updates.version_key)
+    if ytdlp_updates.version_key(latest) <= ytdlp_updates.version_key(newest_here):
+        restart = newest_here != yt_dlp.version.__version__
+        return {"updated": restart, "restart_required": restart, "version": newest_here}
+    try:
+        await asyncio.to_thread(ytdlp_updates.install, settings.data_dir, latest)
+    except Exception as e:
+        logging.getLogger(__name__).warning("yt-dlp update failed: %s", e)
         raise HTTPException(status_code=500, detail="Could not update yt-dlp. Check your internet connection.")
-    out = proc.stdout.decode("utf-8", errors="replace")
-    return {"updated": "Successfully installed" in out, "restart_required": "Successfully installed" in out}
+    return {"updated": True, "restart_required": True, "version": latest}
 
 
 def _existing_parent(path: str) -> str:

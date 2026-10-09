@@ -35,6 +35,9 @@ while IFS= read -r -d '' f; do
 done < <(find "$app" -type f -print0)
 echo "  checked $count programs and libraries"
 
+echo "Backend and tools start from the read-only app:"
+bash "$(dirname "$0")/smoke-backend.sh" "$app/Contents/Resources" || wrong=$((wrong + 1))
+
 echo "Gatekeeper (an unsigned-by-Apple app is expected to be rejected, but not as damaged):"
 spctl --assess --type execute --verbose=4 "$app" 2>&1 || true
 

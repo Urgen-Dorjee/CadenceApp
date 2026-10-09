@@ -304,7 +304,7 @@ The build fails if the backend can't import its dependencies or if the preload s
 
 ### Publish an update
 
-Installed copies on Windows and Linux (AppImage) check for updates every six hours, download them in the background and show **Restart to update**. macOS only installs updates for apps signed with an Apple Developer ID, so until Cadence is signed, Mac users download new versions from the Releases page (Settings → Updates links to it). Updates are published to this repository's [Releases](https://github.com/Urgen-Dorjee/CadenceApp/releases) (configured under `build.publish` in `package.json`).
+Installed copies on Windows and Linux (AppImage) check for updates every six hours, download them in the background and show **Restart to update**. macOS only installs updates for apps signed with an Apple Developer ID, so until Cadence is signed, the Mac app checks for a newer release and shows **Cadence X available** with a link to download it. The YouTube downloader (yt-dlp) can be updated separately from Settings; that update is kept in Cadence's data folder, never inside the app. Updates are published to this repository's [Releases](https://github.com/Urgen-Dorjee/CadenceApp/releases) (configured under `build.publish` in `package.json`).
 
 **Automatically (recommended):**
 

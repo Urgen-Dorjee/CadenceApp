@@ -1,10 +1,12 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, net } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
+import { isNewer } from './version'
 
 /** What the renderer shows in Settings and the status bar. */
 export interface UpdateStatus {
-  state: 'unsupported' | 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'error'
+  // 'available': a newer version to download by hand (unsigned Mac app); `message` is its page.
+  state: 'unsupported' | 'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'ready' | 'error'
   version?: string
   percent?: number
   message?: string
@@ -14,13 +16,18 @@ export interface UpdateStatus {
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000
 
 // macOS only installs updates for signed apps (Developer ID). Until Cadence is signed,
-// Mac users download new versions from the Releases page instead.
+// the Mac app checks GitHub for a newer version and links to it instead.
 const macUnsigned = process.platform === 'darwin' && !process.env.CADENCE_MAC_SIGNED
-const RELEASES_URL = 'https://github.com/Urgen-Dorjee/CadenceApp/releases/latest'
+const LATEST_RELEASE_API = 'https://api.github.com/repos/Urgen-Dorjee/CadenceApp/releases/latest'
 
-let status: UpdateStatus = app.isPackaged && !macUnsigned
-  ? { state: 'idle' }
-  : { state: 'unsupported', message: macUnsigned && app.isPackaged ? RELEASES_URL : undefined }
+let status: UpdateStatus = app.isPackaged ? { state: 'idle' } : { state: 'unsupported' }
+
+async function latestRelease(): Promise<{ version: string; url: string }> {
+  const res = await net.fetch(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Cadence' } })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const body = (await res.json()) as { tag_name: string; html_url: string }
+  return { version: body.tag_name.replace(/^v/, ''), url: body.html_url }
+}
 
 export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
   const send = (next: UpdateStatus) => {
@@ -29,8 +36,26 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
   }
 
   ipcMain.handle('update:getStatus', () => status)
+  // Unsigned Mac app: look for a newer release and link to it.
+  const checkManually = async () => {
+    send({ ...status, state: 'checking' })
+    try {
+      const latest = await latestRelease()
+      send(isNewer(latest.version, app.getVersion())
+        ? { state: 'available', version: latest.version, message: latest.url, checkedAt: Date.now() }
+        : { state: 'none', checkedAt: Date.now() })
+    } catch (err) {
+      log.warn('Update check failed:', err)
+      send({ state: 'error', message: friendly(err), checkedAt: Date.now() })
+    }
+  }
+
   ipcMain.handle('update:check', async () => {
     if (!app.isPackaged) return status
+    if (macUnsigned) {
+      await checkManually()
+      return status
+    }
     try {
       await autoUpdater.checkForUpdates()
     } catch (err) {
@@ -42,8 +67,12 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
     if (status.state === 'ready') autoUpdater.quitAndInstall(false, true)
   })
 
-  // Updates only work in installed (and, on macOS, signed) builds.
-  if (!app.isPackaged || macUnsigned) return
+  if (!app.isPackaged) return
+  if (macUnsigned) {
+    setTimeout(checkManually, 10_000)
+    setInterval(checkManually, CHECK_EVERY_MS)
+    return
+  }
 
   autoUpdater.logger = log
   // Download quietly in the background; the user decides when to restart.
@@ -67,7 +96,7 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
 
 function friendly(err: unknown): string {
   const text = String((err as Error)?.message ?? err)
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(text)) return "Couldn't reach the update server. Check your internet connection."
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|ERR_INTERNET|ERR_NAME/i.test(text)) return "Couldn't reach the update server. Check your internet connection."
   if (/404/.test(text)) return 'No published releases were found yet.'
   return 'The update check failed. Details are in the log file.'
 }

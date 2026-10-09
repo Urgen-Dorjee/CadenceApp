@@ -12,6 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import settings
+from core import ytdlp_updates
+
+# Before anything imports yt_dlp: use a newer yt-dlp from the data folder if there is one.
+ytdlp_updates.activate(settings.data_dir)
+
 from core.db import get_store
 from core.websocket_manager import manager as ws_manager
 from routers import jobs, library, system
@@ -53,7 +58,7 @@ async def lifespan(app: FastAPI):
     print("[Backend] Shutting down...")
 
 
-app = FastAPI(title="Cadence Backend", version="2.1.1", lifespan=lifespan)
+app = FastAPI(title="Cadence Backend", version="2.1.2", lifespan=lifespan)
 
 
 def _token_ok(value: str | None) -> bool:

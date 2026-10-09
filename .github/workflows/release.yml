@@ -113,6 +113,14 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: Check the Linux app starts
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod -R a-w ${{ matrix.out }}/linux-unpacked   # like the read-only AppImage
+          bash scripts/smoke-backend.sh ${{ matrix.out }}/linux-unpacked/resources
+          chmod -R u+w ${{ matrix.out }}/linux-unpacked
+
       - name: Check the Mac app (signature and architecture)
         if: runner.os == 'macOS'
         shell: bash
