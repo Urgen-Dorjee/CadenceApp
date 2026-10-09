@@ -61,7 +61,8 @@ xattr -cr /Applications/Cadence.app
 - **Review before saving.** Waveform overview, per-cut close-ups, play any song, nudge cuts by 0.1 s, split at the playhead, join songs, include or skip songs.
 - **Proper tags.** Title, artist, album artist, album, year, track number and cover art in MP3, M4A (AAC), Opus or FLAC.
 - **Even loudness.** ReplayGain tags (audio untouched) or one fixed gain per song to a target loudness, measured to EBU R128. Silence at song edges is trimmed.
-- **Organised library.** Configurable folder layouts per collection type, and a built-in Library with search, cover art and a player.
+- **Organised library.** Configurable folder layouts per collection type, and a built-in Library with search and cover art.
+- **Built-in player.** Play a song, an album or a singer; **Play next** and **Add to queue** on any song; a queue you can jump around in and trim; shuffle and repeat (all or one). Keyboard media keys, the Windows media overlay and macOS Now Playing show the song and its cover.
 - **Album details from MusicBrainz.** Look up a movie or album to fill in its name, year, singer and cover art, and every song name when the track count matches. No key needed.
 - **Optional naming helpers.** Identify songs by sound with AcoustID, or tidy messy names with AI.
 - **Resilient.** Jobs persist across restarts, the audio engine restarts itself if it crashes, and the app updates itself in the background.
