@@ -11,6 +11,9 @@ interface AppState {
   identifyBuiltIn: boolean
   ytDlpVersion: string
   update: UpdateStatus
+  /** "Restart to update" was clicked: the window explains what happens next, then Cadence closes. */
+  installing: boolean
+  setInstalling: (installing: boolean) => void
   setUpdate: (update: UpdateStatus) => void
   setRestarting: () => void
   setReady: (info: { ffmpegAvailable: boolean; ytDlpVersion: string; identifyBuiltIn: boolean }) => void
@@ -24,6 +27,8 @@ export const useAppStore = create<AppState>((set) => ({
   identifyBuiltIn: false,
   ytDlpVersion: '',
   update: { state: 'idle' },
+  installing: false,
+  setInstalling: (installing) => set({ installing }),
   setUpdate: (update) => set({ update }),
   setRestarting: () => set({ backend: 'restarting', backendError: null }),
   setReady: ({ ffmpegAvailable, ytDlpVersion, identifyBuiltIn }) =>

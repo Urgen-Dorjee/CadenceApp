@@ -1,3 +1,4 @@
+import pytest
 """yt-dlp updates live in the data folder and are only used while newer than the bundled one."""
 
 import os
@@ -45,3 +46,31 @@ def test_update_older_than_the_bundled_one_is_removed(tmp_path, monkeypatch):
 
 def test_no_update_installed(tmp_path):
     assert ytdlp_updates.activate(str(tmp_path)) is None
+
+
+def _wheel(files):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text)
+    return buf.getvalue()
+
+
+def test_wheel_is_checked_and_unpacked(tmp_path):
+    import hashlib
+    data = _wheel({"yt_dlp/__init__.py": "", "yt_dlp-2099.1.1.dist-info/METADATA": "Name: yt-dlp"})
+    ytdlp_updates.unpack_wheel(data, hashlib.sha256(data).hexdigest(), str(tmp_path))
+    assert ytdlp_updates.installed_version(str(tmp_path)) == "2099.1.1"
+
+
+def test_damaged_or_unsafe_wheels_are_refused(tmp_path):
+    import hashlib
+    good = _wheel({"yt_dlp/__init__.py": ""})
+    with pytest.raises(RuntimeError, match="checksum"):
+        ytdlp_updates.unpack_wheel(good, "0" * 64, str(tmp_path))
+    evil = _wheel({"../outside.py": ""})
+    with pytest.raises(RuntimeError, match="Unexpected file"):
+        ytdlp_updates.unpack_wheel(evil, hashlib.sha256(evil).hexdigest(), str(tmp_path / "t"))
+    assert not (tmp_path / "outside.py").exists()

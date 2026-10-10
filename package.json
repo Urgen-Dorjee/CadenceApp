@@ -131,7 +131,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "artifactName": "Cadence-Setup-${version}.${ext}",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "resources/installer.nsh"
     },
     "publish": [
       {
