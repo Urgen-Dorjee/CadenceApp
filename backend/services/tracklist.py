@@ -20,8 +20,10 @@ CONFIDENCE = {
 
 _TS = r"(?<![\d:])(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?![\d:])"
 _TS_RE = re.compile(_TS)
-# Leading "1.", "01)", "#3", "Track 4 -" before a title
-_TRACK_NO_RE = re.compile(r"^\s*(?:#|track\s*)?\d{1,3}\s*[.)\-:]\s+", re.IGNORECASE)
+# Leading "1.", "01)", "#3", "Track 4 -" before a title, and "1.Song" with no space
+_TRACK_NO_RE = re.compile(r"^\s*(?:#|track\s*)?\d{1,3}\s*(?:[.)\-:]\s+|[.)]\s*(?=[^\W\d_]))", re.IGNORECASE)
+# A "Song :" label in front of the name, as in "1.Song : Tum Dil Ki Dhadkan Mein"
+_SONG_LABEL_RE = re.compile(r"^\s*(?:song|song\s+name|track)\s*[:\-]\s*", re.IGNORECASE)
 _EDGE_PUNCT = " \t-–—|:•·~>*[](){}\"'"
 
 # Noise words that video titles attach to song names.
@@ -78,6 +80,7 @@ def timestamp_lines(text: str) -> list[tuple[float, str]]:
         start = parse_seconds(*matches[0].groups())
         title = _TS_RE.sub(" ", line)
         title = _TRACK_NO_RE.sub("", title.strip(_EDGE_PUNCT))
+        title = _SONG_LABEL_RE.sub("", title)
         title = re.sub(r"\s*[-–—|]\s*[-–—|]\s*", " - ", title)  # "a - - b" left by a removed range
         title = clean_title(title.strip(_EDGE_PUNCT))
         entries.append((float(start), title))
@@ -267,11 +270,92 @@ def tracks_from_pasted(
 SHORT_TRACK_SECONDS = 45.0
 
 
+LONG_TRACK_SECONDS = 15 * 60.0
+
+
 def flag_short_tracks(tracks: list[dict[str, Any]]) -> None:
-    """Segments under 45 s are usually an intro or outro, not a song: ask the user."""
+    """Ask the user about segments under 45 s (usually an intro or outro, not a song) and,
+    in a video of several songs, over 15 minutes (almost certainly more than one song)."""
     for t in tracks:
-        if t["origin"] not in ("playlist", "single", "manual") and t["end"] - t["start"] < SHORT_TRACK_SECONDS:
+        if t["origin"] in ("playlist", "single", "manual"):
+            continue
+        length = t["end"] - t["start"]
+        if length < SHORT_TRACK_SECONDS or (len(tracks) > 1 and length > LONG_TRACK_SECONDS):
             t["confidence"] = min(t["confidence"], 0.5)
+
+
+# --- Numbered song lists in descriptions ------------------------------------------
+#
+# Jukebox descriptions often list every song as a numbered block:
+#   1.Song : Sochenge Tumhe Pyaar - 00:00
+#   Singer : Kumar Sanu
+#   Title : Deewana
+# and the uploader sometimes gives times for only the first few. The block's
+# singer and film are read too.
+
+_NUMBERED_RE = re.compile(r"^\s*(\d{1,3})\s*[.)]\s*(\S.*)$")
+_SINGER_LINE_RE = re.compile(r"^\s*(?:singers?|sung\s+by|vocals?)\s*(?:\(s\))?\s*[:\-]+\s*(.+)$", re.IGNORECASE)
+_FILM_LINE_RE = re.compile(r"^\s*(?:title|movie|film|album)\s*(?:name)?\s*[:\-]+\s*(.+)$", re.IGNORECASE)
+_LANGUAGE_SUFFIX_RE = re.compile(r"\s*-\s*(?:hindi|tamil|telugu|punjabi|bengali|marathi|nepali)\s*$", re.IGNORECASE)
+
+
+def numbered_songs(text: str) -> list[dict[str, Any]]:
+    """[{number, title, start (or None), singer, film}] for a list numbered 1, 2, 3... (at least 3).
+
+    Only the longest run counting up from 1 is kept, so other numbered lines don't mix in.
+    """
+    songs: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw in text.splitlines():
+        m = _NUMBERED_RE.match(raw)
+        if m and int(m.group(1)) == len(songs) + 1:
+            line = m.group(2)
+            times = list(_TS_RE.finditer(line))
+            start = float(parse_seconds(*times[0].groups())) if len(times) == 1 else None
+            title = _SONG_LABEL_RE.sub("", _TS_RE.sub(" ", line).strip(_EDGE_PUNCT))
+            current = {"number": len(songs) + 1, "title": clean_title(title.strip(_EDGE_PUNCT)), "start": start, "singer": "", "film": ""}
+            songs.append(current)
+            continue
+        if current is None:
+            continue
+        if (s := _SINGER_LINE_RE.match(raw)) and not current["singer"]:
+            current["singer"] = re.sub(r"\s*&\s*", ", ", s.group(1).strip(_EDGE_PUNCT))
+        elif (f := _FILM_LINE_RE.match(raw)) and not current["film"]:
+            current["film"] = _LANGUAGE_SUFFIX_RE.sub("", f.group(1)).strip(_EDGE_PUNCT)
+    return songs if len(songs) >= 3 else []
+
+
+def untimed_songs(description: str, tracks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Songs the description lists after its last timed one: [{title, singer}].
+
+    For a list like "1. A - 00:00 ... 5. E - 20:39, 6. F, 7. G ..." where the uploader
+    stopped adding times. [] unless the timed songs are exactly the list's first ones.
+    """
+    if not tracks or tracks[0]["origin"] != "description":
+        return []
+    listed = numbered_songs(description)
+    timed = [s for s in listed if s["start"] is not None]
+    if len(timed) != len(tracks) or listed[: len(timed)] != timed or len(listed) == len(timed):
+        return []
+    return [{"title": s["title"] or f"Track {s['number']}", "singer": s["singer"]} for s in listed[len(timed):]]
+
+
+def add_listed_singers(tracks: list[dict[str, Any]], description: str) -> None:
+    """Give description tracks the singer named in their numbered block, when it names one."""
+    if not tracks or tracks[0]["origin"] != "description":
+        return
+    listed = numbered_songs(description)
+    timed = [s for s in listed if s["start"] is not None]
+    if len(timed) < len(tracks):
+        return
+    for track, song in zip(tracks, timed):
+        if song["singer"] and not track.get("artist"):
+            track["artist"] = song["singer"]
+
+
+def listed_films(description: str) -> set[str]:
+    """The different films or albums a numbered song list names."""
+    return {s["film"].casefold() for s in numbered_songs(description) if s["film"]}
 
 
 def tracks_from_metadata(info: dict[str, Any], source_id: str) -> list[dict[str, Any]]:
@@ -284,7 +368,9 @@ def tracks_from_metadata(info: dict[str, Any], source_id: str) -> list[dict[str,
 
     entries = parse_timestamps(info.get("description") or "", duration)
     if entries:
-        return _tracks_from_starts(entries, duration, "description", source_id)
+        tracks = _tracks_from_starts(entries, duration, "description", source_id)
+        add_listed_singers(tracks, info.get("description") or "")
+        return tracks
 
     best: list[tuple[float, str]] = []
     for comment in info.get("comments") or []:

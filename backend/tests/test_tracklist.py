@@ -4,9 +4,12 @@ from services.tracklist import (
     flag_short_tracks,
     make_track,
     format_ts,
+    listed_films,
+    numbered_songs,
     parse_timestamps,
     tracks_from_chapters,
     tracks_from_metadata,
+    untimed_songs,
 )
 
 
@@ -120,3 +123,66 @@ def test_short_segments_are_flagged_for_review():
 def test_format_ts():
     assert format_ts(65) == "1:05"
     assert format_ts(3723) == "1:02:03"
+
+
+PARTLY_TIMED = """Songs included in this Jukebox are :-
+
+1.Song : Sochenge Tumhe Pyaar - 00:00
+Singer : Kumar Sanu
+Music : Nadeem, Shravan
+Title : Deewana - Hindi
+
+2.Song : Bahut Pyaar Karte Hai - Female - 06:03
+Singer : Anuradha Paudwal
+Title : Saajan - Hindi
+
+3.Song : Kore Kore Sapne - 10:25
+Singers : Kumar Sanu & Anuradha Paudwal
+Title : Sooryavansham
+
+4.Song : Humsafar Milti Hai Manzil - 
+Singer : Anuradha Paudwal
+Title : Insaaf
+
+5.Song : Tere Dard Se Dil
+Singer : Kumar Sanu
+Title : Deewana - Hindi
+"""
+
+
+def test_numbered_blocks_give_clean_titles_and_singers():
+    tracks = tracks_from_metadata({"duration": 3000, "description": PARTLY_TIMED}, "s")
+    assert [t["title"] for t in tracks] == ["Sochenge Tumhe Pyaar", "Bahut Pyaar Karte Hai - Female", "Kore Kore Sapne"]
+    assert [t["artist"] for t in tracks] == ["Kumar Sanu", "Anuradha Paudwal", "Kumar Sanu, Anuradha Paudwal"]
+
+
+def test_songs_listed_without_times_after_the_timed_ones():
+    tracks = tracks_from_metadata({"duration": 3000, "description": PARTLY_TIMED}, "s")
+    assert untimed_songs(PARTLY_TIMED, tracks) == [
+        {"title": "Humsafar Milti Hai Manzil", "singer": "Anuradha Paudwal"},
+        {"title": "Tere Dard Se Dil", "singer": "Kumar Sanu"},
+    ]
+    assert listed_films(PARTLY_TIMED) == {"deewana", "saajan", "sooryavansham", "insaaf"}
+    fully_timed = "1. A 0:00\n2. B 4:00\n3. C 8:00"
+    assert untimed_songs(fully_timed, tracks_from_metadata({"duration": 900, "description": fully_timed}, "s")) == []
+
+
+def test_numbered_songs_needs_a_run_from_one():
+    assert numbered_songs("2. Not a list\n3. Still not") == []
+    assert [s["title"] for s in numbered_songs("1.Careless Whisper\n2.Fast Car\n3.Drive\n7. Other")] == [
+        "Careless Whisper", "Fast Car", "Drive",
+    ]
+
+
+def test_numbers_without_a_space_are_dropped_from_titles():
+    assert [t for _, t in parse_timestamps("1.Careless Whisper 0:00\n2.Fast Car 4:00", 600)] == ["Careless Whisper", "Fast Car"]
+    assert [t for _, t in parse_timestamps("0:00 99 Red Balloons\n4:00 1999", 600)] == ["99 Red Balloons", "1999"]
+
+
+def test_very_long_segments_are_flagged_in_a_collection():
+    tracks = [
+        make_track(title="A", start=0, end=300, origin="description", source_id="s"),
+        make_track(title="B", start=300, end=7000, origin="description", source_id="s"),
+    ]
+    flag_short_tracks(tracks)
+    assert [t["confidence"] for t in tracks] == [0.9, 0.5]

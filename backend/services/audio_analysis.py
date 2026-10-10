@@ -153,6 +153,110 @@ def split_long_segments(
     return result
 
 
+# Jukeboxes often leave only a split second of silence between songs: too short for
+# silences_from_rms, but much deeper than any pause inside a song.
+DIP_BELOW_MEDIAN_DB = 37.0  # a dip is at least this much quieter than the typical level...
+DIP_FLOOR_DB = -50.0        # ...and quieter than this
+DIP_MERGE_S = 3.0
+SONG_MIN_S = 150.0          # songs found this way should be 2.5 to 10 minutes long
+SONG_MAX_S = 600.0
+
+
+def short_dips(profile: AudioProfile, start: float, end: float, margin: float = 60.0) -> list[tuple[float, float]]:
+    """(time, depth below the typical level in dB) of every brief near-silence inside (start, end)."""
+    db = 20 * np.log10(np.maximum(profile.rms, 1e-9))
+    if not len(db):
+        return []
+    threshold = min(DIP_FLOOR_DB, float(np.median(db)) - DIP_BELOW_MEDIAN_DB)
+    quiet = np.concatenate([[False], db < threshold, [False]])
+    runs = np.flatnonzero(quiet[1:] != quiet[:-1]).reshape(-1, 2)
+    dips: list[tuple[float, float]] = []
+    for a, b in runs:
+        i = int(a + np.argmin(db[a:b]))
+        t = round(i * FRAME_S, 3)
+        if not (start + margin < t < end - margin):
+            continue
+        depth = float(np.median(db)) - max(float(db[i]), -100.0)
+        if dips and t - dips[-1][0] < DIP_MERGE_S:
+            if depth > dips[-1][1]:
+                dips[-1] = (t, depth)
+            continue
+        dips.append((t, depth))
+    return dips
+
+
+def _choose(candidates: list[tuple[float, float]], start: float, end: float, count: int) -> list[tuple[float, float]]:
+    """Exactly `count` of `candidates`, giving songs of believable, similar lengths (deeper dips win ties)."""
+    typical = (end - start) / (count + 1)
+
+    def cost(a: float, b: float) -> float:
+        length = b - a
+        outside = max(0.0, SONG_MIN_S - length) + max(0.0, length - SONG_MAX_S)
+        return outside / 10 + ((length - typical) / typical) ** 2
+
+    times = [t for t, _ in candidates]
+    bonus = [-depth / 1000 for _, depth in candidates]
+    m = len(times)
+    inf = float("inf")
+    # best[k][j]: lowest cost with k + 1 cuts chosen, the last at candidate j
+    best = [[inf] * m for _ in range(count)]
+    back = [[-1] * m for _ in range(count)]
+    for j in range(m):
+        best[0][j] = cost(start, times[j]) + bonus[j]
+    for k in range(1, count):
+        for j in range(k, m):
+            for i in range(k - 1, j):
+                c = best[k - 1][i] + cost(times[i], times[j]) + bonus[j]
+                if c < best[k][j]:
+                    best[k][j], back[k][j] = c, i
+    j = min(range(m), key=lambda j: best[count - 1][j] + cost(times[j], end))
+    chosen = []
+    for k in range(count - 1, -1, -1):
+        chosen.append(candidates[j])
+        j = back[k][j]
+    return chosen[::-1]
+
+
+def cuts_in_range(profile: AudioProfile, start: float, end: float, count: int,
+                  min_track: float = MIN_TRACK_SECONDS) -> list[tuple[float, float]]:
+    """`count` cuts between `start` and `end`, for when the number of songs there is known.
+
+    Brief silences between songs come first, choosing the ones that give songs of
+    believable lengths; then longer silent gaps and, last, the clearest music changes
+    (with a low confidence, so the review screen asks about them).
+    Returns (time, confidence) sorted by time.
+    """
+    if count <= 0 or end - start < 2 * min_track:
+        return []
+    dips = short_dips(profile, start, end)
+    if len(dips) >= count:
+        chosen = _choose(dips, start, end, count)
+        edges = [start] + [t for t, _ in chosen] + [end]
+        cuts = []
+        for i, (t, _) in enumerate(chosen):
+            believable = all(SONG_MIN_S <= b - a <= SONG_MAX_S for a, b in ((edges[i], t), (t, edges[i + 2])))
+            cuts.append((t, 0.75 if believable else 0.5))
+        return cuts
+
+    cuts = [(t, 0.7) for t, _ in dips]
+    inside = [(a - start, b - start) for a, b in silences_from_rms(profile.rms) if a > start and b < end]
+    for t, conf in sorted(boundaries_from_silences(inside, end - start, min_track), key=lambda c: c[1], reverse=True):
+        if len(cuts) >= count:
+            break
+        if all(abs(t + start - c) >= min_track for c, _ in cuts):
+            cuts.append((round(t + start, 3), min(conf, 0.6)))
+    if len(cuts) < count:
+        novelty = novelty_curve(profile.features)
+        lo, hi = int((start + min_track) / BLOCK_S), min(int((end - min_track) / BLOCK_S), len(novelty) - 1)
+        for idx in (lo + np.argsort(novelty[lo:hi + 1])[::-1] if hi > lo else []):
+            if len(cuts) >= count:
+                break
+            t = round((int(idx) + 0.5) * BLOCK_S, 3)
+            if all(abs(t - c) >= min_track for c, _ in cuts):
+                cuts.append((t, 0.45))
+    return sorted(cuts)
+
+
 def tracks_from_profile(profile: AudioProfile, source_id: str) -> list[dict[str, Any]]:
     """Songs found from the audio alone: silent gaps first, then music changes."""
     duration = profile.duration

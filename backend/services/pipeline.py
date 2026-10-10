@@ -259,17 +259,23 @@ async def _analyze_video(job_id: str, info: dict[str, Any], out_dir: str, loop: 
         "artist": singer if len(found["singers"]) <= 1 else "",
         "year": year, "song": found["song"], "film": found["album"],
     }
-    await _find_songs(job_id, loop, out_dir, source, tracks, title, singer, 80.0, hint)
+    untimed = tracklist.untimed_songs(source["description"], tracks)
+    if len(tracklist.listed_films(source["description"])) > 1:
+        hint["mixed_films"] = "1"
+    await _find_songs(job_id, loop, out_dir, source, tracks, title, singer, 80.0, hint, untimed)
 
 
 async def _find_songs(
     job_id: str, loop: asyncio.AbstractEventLoop, out_dir: str, source: dict[str, Any], tracks: list[dict[str, Any]],
     title: str, uploader: str, base: float, hint: dict[str, str] | None = None,
+    untimed: list[dict[str, str]] | None = None,
 ) -> None:
     """Shared by videos and local files: read the waveform, find or refine the songs, name them, then review.
 
     `tracks` is the tracklist found so far ([] to listen for the songs). `base` is
     where progress stands. `hint` holds album details from tags or a cue sheet.
+    `untimed` are songs a description lists, without times, after its last timed song:
+    they are found in the audio after that song's start.
     """
     prefs = load_preferences()
     sid, audio_path, duration = source["id"], source["path"], source["duration"]
@@ -292,6 +298,17 @@ async def _find_songs(
         await _update(job_id, progress=93, message="Fine-tuning cut points")
     if tracks:
         tracks[-1]["end"] = min(tracks[-1]["end"], duration) or duration
+    if tracks and untimed:
+        last = tracks[-1]
+        cuts = audio_analysis.cuts_in_range(profile, last["start"], last["end"], len(untimed))
+        if cuts:
+            end, last["end"] = last["end"], cuts[0][0]
+            for i, (song, (at, conf)) in enumerate(zip(untimed, cuts)):
+                until = cuts[i + 1][0] if i + 1 < len(cuts) else end
+                tracks.append(tracklist.make_track(
+                    title=song["title"], artist=song["singer"], start=at, end=until,
+                    origin="description", source_id=sid, confidence=conf,
+                ))
     await audio_analysis.refine_boundaries(tracks, audio_path, duration, prefs.snap_window_s)
     tracklist.flag_short_tracks(tracks)
     _check_cancel(job_id)
@@ -306,6 +323,9 @@ async def _find_songs(
             log.warning("Song identification skipped: %s", e)
 
     collection = tracklist.classify_collection(title, len(tracks), uploader)
+    if hint and hint.get("mixed_films") and collection["type"] == "album":
+        # Songs from many films: a collection, not one film's album.
+        collection.update(type="collection", album="", confidence=0.6)
     if hint and hint.get("album") and len(tracks) > 1:
         collection.update(type="album", name=hint["album"], album=hint["album"], confidence=0.8)
     if hint and hint.get("artist") and not collection.get("artist"):
