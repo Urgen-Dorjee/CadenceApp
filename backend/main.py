@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
     print("[Backend] Shutting down...")
 
 
-app = FastAPI(title="Cadence Backend", version="2.4.0", lifespan=lifespan)
+app = FastAPI(title="Cadence Backend", version="2.5.0", lifespan=lifespan)
 
 
 def _token_ok(value: str | None) -> bool:
