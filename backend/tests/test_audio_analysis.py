@@ -247,3 +247,24 @@ def test_tracklist_songs_too_long_to_be_one_song_are_split_by_listening():
     assert [round(t["start"]) for t in tracks] == [0, 300, 610, 905, 1210, 1530]
     assert [t["title"] for t in tracks[:2]] == ["A", "B"]
     assert all(t["confidence"] < 0.7 for t in tracks[2:])   # new songs are marked Check
+
+
+def test_long_songs_from_chapters_or_a_full_list_are_never_split():
+    from services import pipeline
+    from services.tracklist import make_track
+
+    # A 10.8-minute song with a silence in the middle, between 5-minute songs.
+    profile = _profile_with_dips(1500, [300, 600, 950, 1250])
+    for origin in ("chapters", "description"):
+        tracks = [make_track(title=n, start=a, end=b, origin=origin, source_id="s")
+                  for n, a, b in [("A", 0, 300), ("Long", 300, 950), ("B", 950, 1250), ("C", 1250, 1500)]]
+        assert [t["title"] for t in pipeline._split_long_tracks(tracks, profile, "s")] == ["A", "Long", "B", "C"]
+
+
+def test_listening_keeps_a_long_song_whole_between_clear_gaps():
+    # Songs of ~5 minutes with gaps, and one 9.5-minute song (no gap inside it).
+    edges = [300, 600, 900, 1470, 1770, 2070]
+    profile = _profile_with_dips(2370, edges)
+    profile.features[:] = np.random.default_rng(1).normal(size=profile.features.shape)
+    starts = [round(t["start"]) for t in tracks_from_profile(profile, "s")]
+    assert starts == [0] + edges

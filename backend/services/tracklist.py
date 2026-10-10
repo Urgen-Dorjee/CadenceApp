@@ -270,17 +270,19 @@ def tracks_from_pasted(
 SHORT_TRACK_SECONDS = 45.0
 
 
-LONG_TRACK_SECONDS = 10 * 60.0
+LONG_TRACK_SECONDS = 15 * 60.0
 
 
 def flag_short_tracks(tracks: list[dict[str, Any]]) -> None:
     """Ask the user about segments under 45 s (usually an intro or outro, not a song) and,
-    in a video of several songs, over 10 minutes (almost certainly more than one song)."""
+    when Cadence guessed the cuts (by listening, or from a description), segments over
+    15 minutes in a video of several songs. A long chapter is the uploader's own song."""
     for t in tracks:
         if t["origin"] in ("playlist", "single", "manual"):
             continue
         length = t["end"] - t["start"]
-        if length < SHORT_TRACK_SECONDS or (len(tracks) > 1 and length > LONG_TRACK_SECONDS):
+        guessed = t["origin"] in ("silence", "description", "comment")
+        if length < SHORT_TRACK_SECONDS or (guessed and len(tracks) > 1 and length > LONG_TRACK_SECONDS):
             t["confidence"] = min(t["confidence"], 0.5)
 
 
