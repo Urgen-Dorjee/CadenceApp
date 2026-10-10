@@ -469,8 +469,8 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             for n, track in enumerate(chosen, start=1):
                 _check_cancel(job_id)
                 source = sources[track["source_id"]]
-                rel = library.relative_path(track, n, collection, prefs)
                 fmt, muxer = formats[track["source_id"]]
+                rel = library.fit_path(root, library.relative_path(track, n, collection, prefs), fmt)
                 dest = library.unique_path(os.path.join(root, f"{rel}.{fmt}"), replaceable)
                 if any(library.same_file_key(dest) == library.same_file_key(o["path"]) for o in outputs):
                     dest = library.unique_path(dest)  # two songs with the same name in this save

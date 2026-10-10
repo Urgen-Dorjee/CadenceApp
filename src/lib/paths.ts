@@ -1,9 +1,21 @@
 import type { Collection, Preferences, Track } from '../types/job'
 
 // Mirrors backend/services/library.py closely enough for a "Saves to" preview.
-function sanitize(name: string) {
+const MAX_FOLDER = 60
+const MAX_FILE = 100
+
+/** Cut to `limit` characters at a word boundary when there is one nearby (like the backend). */
+export function shorten(name: string, limit: number) {
+  if (name.length <= limit) return name
+  let cut = name.slice(0, limit)
+  const space = cut.lastIndexOf(' ')
+  if (space >= limit * 0.6) cut = cut.slice(0, space)
+  return cut.replace(/[\s.,;:\-–—…&+|]+$/, '') || name.slice(0, limit)
+}
+
+function sanitize(name: string, limit: number) {
   const cleaned = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').replace(/\s{2,}/g, ' ').trim().replace(/[. ]+$/, '')
-  return cleaned.slice(0, 120) || 'Untitled'
+  return shorten(cleaned, limit).replace(/[. ]+$/, '') || 'Untitled'
 }
 
 function templateFor(type: Collection['type'], prefs: Preferences) {
@@ -29,7 +41,8 @@ export function previewPath(track: Track, number: number, collection: Collection
     if (key === 'track') return pad ? String(number).padStart(Number(pad), '0') : String(number)
     return (values[key] ?? '').replace(/[\\/]+/g, ' ')
   })
-  const parts = rendered.split(/[\\/]+/).filter((p) => p.trim()).map(sanitize)
+  const pieces = rendered.split(/[\\/]+/).filter((p) => p.trim())
+  const parts = pieces.map((p, i) => sanitize(p, i === pieces.length - 1 ? MAX_FILE : MAX_FOLDER))
   const sep = prefs.library_dir.includes('\\') ? '\\' : '/'
   // "Original" keeps each video's own file type, which isn't known until saving.
   const ext = prefs.audio_format === 'original' ? '' : `.${prefs.audio_format}`
