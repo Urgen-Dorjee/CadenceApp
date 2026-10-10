@@ -8,6 +8,7 @@ import PlayerBar from './PlayerBar'
 import NowPlaying from '../player/NowPlaying'
 import { usePlayerShortcuts } from '../../hooks/usePlayerShortcuts'
 import WelcomeDialog from './WelcomeDialog'
+import UpdateOverlay from './UpdateOverlay'
 import { usePrefsStore } from '../../stores/prefsStore'
 import { useAppStore } from '../../stores/appStore'
 import { sortedJobs, useJobsStore } from '../../stores/jobsStore'
@@ -69,7 +70,7 @@ function StatusBar() {
         {update.state === 'ready' && (
           <button
             className="font-sans h-5 px-2 rounded bg-accent text-accent-ink font-medium hover:brightness-110"
-            onClick={() => window.electronAPI?.installUpdate()}
+            onClick={() => useAppStore.getState().setInstalling(true)}
             title={`Cadence ${update.version} is ready. Cadence closes, updates and opens again by itself.`}
           >
             Restart to update
@@ -148,6 +149,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       <PlayerBar />
       <StatusBar />
       <Welcome />
+      <UpdateOverlay />
     </div>
   )
 }

@@ -645,7 +645,7 @@ export default function SettingsPage() {
           <Row title="Cadence" hint={updateHint}>
             <div className="flex items-center gap-2">
               {updateStatus.state === 'ready' ? (
-                <button className="btn-primary" onClick={() => window.electronAPI?.installUpdate()}>
+                <button className="btn-primary" onClick={() => useAppStore.getState().setInstalling(true)}>
                   <RefreshCw size={14} aria-hidden="true" /> Restart to update
                 </button>
               ) : updateStatus.state === 'available' && updateStatus.message ? (

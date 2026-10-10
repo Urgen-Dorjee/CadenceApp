@@ -289,6 +289,29 @@ async function main() {
     stdio: 'inherit',
   });
 
+  // Pack the standard library and pure-Python packages into zips: installing and updating
+  // writes every file separately and Windows Defender checks each new one, so ~6,800 small
+  // files made an update take about a minute.
+  console.log('   Packing Python libraries into zips...');
+  execSync(`"${pythonOut}" "${path.join(__dirname, 'pack-python.py')}" "${pythonOutDir}"`, { stdio: 'inherit' });
+
+  // Everything must still import from the zips.
+  try {
+    execSync(
+      `"${pythonOut}" -c "import fastapi, uvicorn, yt_dlp, yt_dlp_ejs.yt.solver as s, mutagen, numpy, send2trash; s.core(); print('ok')"`,
+      { encoding: 'utf8', cwd: pythonOutDir }
+    );
+    execSync(`"${pythonOut}" -c "import main"`, {
+      encoding: 'utf8',
+      cwd: outputDir,
+      env: { ...process.env, CADENCE_TOKEN: 'build-check', CADENCE_DATA_DIR: path.join(tempBuildDir, 'check-data') },
+    });
+    console.log('   Imports after packing: OK');
+  } catch (err) {
+    console.error('ERROR: import failed after packing:', err.message);
+    process.exit(1);
+  }
+
   // Calculate total size
   let totalSize = 0;
   function walkDir(dir) {
@@ -311,7 +334,8 @@ async function main() {
   console.log(`    python/python.exe     (standalone Python runtime)`);
   console.log(`    python/${dllName}    (Python DLL)`);
   console.log(`    python/${pthName}   (path config)`);
-  console.log(`    python/Lib/           (standard library + site-packages)`);
+  console.log(`    python/stdlib.zip, python/site-packages.zip  (standard library + pure-Python packages)`);
+  console.log(`    python/Lib/site-packages/  (packages with compiled code)`);
   console.log(`    python/DLLs/          (extension modules)`);
   console.log(`    main.py               (backend entry point)`);
   console.log(`    core/, routers/, services/`);
