@@ -5,6 +5,8 @@ import { clsx } from 'clsx'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import PlayerBar from './PlayerBar'
+import NowPlaying from '../player/NowPlaying'
+import { usePlayerShortcuts } from '../../hooks/usePlayerShortcuts'
 import WelcomeDialog from './WelcomeDialog'
 import { usePrefsStore } from '../../stores/prefsStore'
 import { useAppStore } from '../../stores/appStore'
@@ -126,6 +128,7 @@ function Welcome() {
 }
 
 export default function MainLayout({ children }: { children: ReactNode }) {
+  usePlayerShortcuts()
   return (
     <div className="flex flex-col h-full">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 btn-primary">
@@ -134,11 +137,12 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       <TitleBar />
       <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <div className="flex flex-col flex-1 min-w-0 bg-canvas rounded-tl-xl border-l border-t border-line overflow-hidden">
+        <div className="relative flex flex-col flex-1 min-w-0 bg-canvas rounded-tl-xl border-l border-t border-line overflow-hidden">
           <EngineAlert />
           <main id="main-content" className="flex-1 overflow-auto">
             {children}
           </main>
+          <NowPlaying />
         </div>
       </div>
       <PlayerBar />

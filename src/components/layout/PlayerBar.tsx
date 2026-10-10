@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { ListMusic, Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, FolderOpen, X } from 'lucide-react'
+import { ListMusic, Maximize2, MicVocal, Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from 'lucide-react'
 import QueuePanel from '../library/QueuePanel'
 import { api } from '../../services/api'
 import { usePlayerStore } from '../../stores/playerStore'
-import { formatTime } from '../../lib/time'
+import { MoreMenu, SeekBar, SleepMenu, SpeedMenu } from '../player/PlayerControls'
 
 export function SongCover({ id, hasCover, className }: { id: string; hasCover: boolean; className: string }) {
   const [failed, setFailed] = useState(false)
@@ -21,21 +21,30 @@ export function SongCover({ id, hasCover, className }: { id: string; hasCover: b
 /** Library playback, shown above the status bar while something is queued. */
 export default function PlayerBar() {
   const song = usePlayerStore((s) => s.queue[s.index])
-  const { playing, time, duration, volume, index, queue, repeat, shuffle, toggle, next, previous, seek, setVolume, cycleRepeat, toggleShuffle, close } =
+  const { playing, volume, index, queue, repeat, shuffle, expanded, toggle, next, previous, setVolume, cycleRepeat, toggleShuffle, setExpanded, close } =
     usePlayerStore()
   const [queueOpen, setQueueOpen] = useState(false)
   if (!song) return null
-  const total = duration || song.duration
   const repeatLabel = repeat === 'one' ? 'Repeat this song' : repeat === 'all' ? 'Repeat all' : 'Repeat off'
 
   return (
     <div className="relative h-16 shrink-0 bg-chrome border-t border-line flex items-center gap-4 px-4" role="region" aria-label="Now playing">
       {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
-      <div className="flex items-center gap-3 w-72 min-w-0">
-        <SongCover id={song.id} hasCover={!!song.has_cover} className="w-10 h-10 rounded shrink-0" />
+      <div className="flex items-center gap-3 w-80 min-w-0">
+        <button
+          className="group relative shrink-0 rounded overflow-hidden"
+          onClick={() => setExpanded(!expanded)}
+          aria-label={expanded ? 'Close Now playing' : 'Open Now playing'}
+          title={expanded ? 'Close Now playing (F)' : 'Now playing: cover, lyrics and up next (F)'}
+        >
+          <SongCover id={song.id} hasCover={!!song.has_cover} className="w-11 h-11" />
+          <span className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+            <Maximize2 size={15} className="text-white" />
+          </span>
+        </button>
         <div className="min-w-0">
-          <p className="text-[13px] font-medium truncate">{song.title}</p>
-          <p className="text-xs text-muted truncate">{song.artist || song.album_artist || song.album || 'Unknown artist'}</p>
+          <p className="text-[13px] font-medium truncate" title={song.title}>{song.title}</p>
+          <p className="text-xs text-muted truncate">{song.artist || song.album_artist || song.album || 'Unknown singer'}</p>
         </div>
       </div>
 
@@ -72,23 +81,19 @@ export default function PlayerBar() {
             {repeat === 'one' ? <Repeat1 size={15} /> : <Repeat size={15} />}
           </button>
         </div>
-        <div className="w-full flex items-center gap-2 text-[11px] text-faint tnum font-mono">
-          <span className="w-10 text-right">{formatTime(time, false)}</span>
-          <input
-            type="range"
-            min={0}
-            max={total || 1}
-            step={0.5}
-            value={Math.min(time, total || 0)}
-            onChange={(e) => seek(Number(e.target.value))}
-            className="flex-1 h-1 accent-[rgb(var(--accent))]"
-            aria-label="Position in song"
-          />
-          <span className="w-10">{formatTime(total, false)}</span>
-        </div>
+        <SeekBar />
       </div>
 
-      <div className="flex items-center gap-1 w-72 justify-end">
+      <div className="flex items-center gap-0.5 w-80 justify-end">
+        <button
+          className={clsx('btn-icon', expanded && 'text-accent')}
+          onClick={() => setExpanded(!expanded)}
+          aria-label="Lyrics"
+          aria-pressed={expanded}
+          title="Lyrics and Now playing (F)"
+        >
+          <MicVocal size={16} />
+        </button>
         <button
           className="btn-icon"
           onClick={() => setVolume(volume > 0 ? 0 : 1)}
@@ -103,7 +108,7 @@ export default function PlayerBar() {
           step={0.05}
           value={volume}
           onChange={(e) => setVolume(Number(e.target.value))}
-          className="range w-24"
+          className="range w-20"
           style={{ ['--fill' as string]: `${volume * 100}%` }}
           aria-label="Volume"
         />
@@ -116,9 +121,9 @@ export default function PlayerBar() {
         >
           <ListMusic size={16} />
         </button>
-        <button className="btn-icon" onClick={() => window.electronAPI?.showItemInFolder(song.path)} aria-label="Show in folder" title="Show in folder">
-          <FolderOpen size={15} />
-        </button>
+        <SpeedMenu />
+        <SleepMenu />
+        <MoreMenu song={song} />
         <button className="btn-icon" onClick={close} aria-label="Close player" title="Close player">
           <X size={15} />
         </button>

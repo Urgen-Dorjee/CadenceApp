@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, Response
 from config import load_preferences
 from core.db import get_store
 from core.websocket_manager import manager as ws
-from services import send_to, song_index, tag_edit
+from services import lyrics, send_to, song_index, tag_edit
 
 router = APIRouter()
 
@@ -112,6 +112,31 @@ async def song_cover(song_id_: str):
         raise HTTPException(status_code=404, detail="No cover art")
     data, mime = cover
     return Response(content=data, media_type=mime, headers={"Cache-Control": "max-age=86400"})
+
+
+# Lyrics looked up online while listening, kept for this session.
+_lyrics_cache: dict[str, dict] = {}
+
+
+@router.get("/library/songs/{song_id_}/lyrics")
+async def song_lyrics(song_id_: str, online: bool = False):
+    """Lyrics for the player: saved with the song (.lrc or tags), else, when `online`, from LRCLIB
+    (sends only the title, singer, album and length). {"synced", "plain", "source"}; empty when none."""
+    song = _song(song_id_)
+    saved = await asyncio.to_thread(lyrics.read_saved, song["path"], song["format"])
+    if saved:
+        return {**saved, "source": "saved"}
+    if not online:
+        return {"synced": "", "plain": "", "source": ""}
+    if song_id_ not in _lyrics_cache:
+        try:
+            found = await asyncio.to_thread(
+                lyrics.fetch, song["title"], song["artist"] or song["album_artist"], song["album"], float(song["duration"] or 0),
+            )
+        except OSError as e:
+            raise HTTPException(status_code=503, detail="Couldn't reach LRCLIB to look up the lyrics.") from e
+        _lyrics_cache[song_id_] = {**found, "source": "lrclib"} if found else {"synced": "", "plain": "", "source": ""}
+    return _lyrics_cache[song_id_]
 
 
 _send_tasks: set[asyncio.Task] = set()
