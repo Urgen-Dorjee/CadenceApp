@@ -114,7 +114,7 @@ async function build() {
 
   console.log('4. Verifying...');
   console.log(`   ${run(python, ['-c', 'import sys; print(sys.version.split()[0], sys.platform)']).trim()}`);
-  run(python, ['-c', 'import fastapi, uvicorn, yt_dlp, yt_dlp_ejs, mutagen, numpy, anthropic, send2trash'], { cwd: outputDir });
+  run(python, ['-c', 'import fastapi, uvicorn, yt_dlp, yt_dlp_ejs, mutagen, numpy, send2trash'], { cwd: outputDir });
   console.log('   Libraries: OK');
   run(python, ['-c', 'import main'], {
     cwd: outputDir,

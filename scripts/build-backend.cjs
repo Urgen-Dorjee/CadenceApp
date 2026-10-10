@@ -259,10 +259,10 @@ async function main() {
 
   try {
     execSync(
-      `"${pythonOut}" -c "import yt_dlp, yt_dlp_ejs, mutagen, numpy, anthropic, send2trash; print('ok')"`,
+      `"${pythonOut}" -c "import yt_dlp, yt_dlp_ejs, mutagen, numpy, send2trash; print('ok')"`,
       { encoding: 'utf8', cwd: pythonOutDir }
     );
-    console.log('   yt-dlp + yt-dlp-ejs + mutagen + numpy + anthropic + send2trash: OK');
+    console.log('   yt-dlp + yt-dlp-ejs + mutagen + numpy + send2trash: OK');
   } catch (err) {
     console.error('ERROR: library import test failed:', err.message);
     process.exit(1);
