@@ -93,5 +93,23 @@ def test_identify_tracks_names_only_placeholders(monkeypatch, tmp_path):
 
 
 def test_identify_requires_a_key():
-    with pytest.raises(identify.IdentifyError, match="AcoustID API key"):
+    with pytest.raises(identify.IdentifyError, match="AcoustID key"):
         asyncio.run(identify.identify_tracks([], {}, ""))
+
+
+def test_cadence_key_is_used_unless_the_user_has_their_own(monkeypatch):
+    monkeypatch.setenv("CADENCE_ACOUSTID_KEY", "cadence-key")
+    assert identify.api_key("") == "cadence-key"
+    assert identify.api_key("  mine ") == "mine"
+    # A build without Cadence's key: only a key of the user's own works.
+    import sys
+    import types
+
+    import core
+
+    empty = types.ModuleType("core.app_keys")
+    empty.ACOUSTID = ""
+    monkeypatch.setenv("CADENCE_ACOUSTID_KEY", "")
+    monkeypatch.setitem(sys.modules, "core.app_keys", empty)
+    monkeypatch.setattr(core, "app_keys", empty, raising=False)
+    assert identify.api_key("") == ""

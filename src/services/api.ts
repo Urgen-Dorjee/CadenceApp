@@ -126,7 +126,7 @@ export const api = {
     request<{ synced: string; plain: string; source: '' | 'saved' | 'lrclib' }>(
       'GET', `/api/library/songs/${encodeURIComponent(id)}/lyrics${online ? '?online=true' : ''}`,
     ),
-  health: () => request<{ status: string; ffmpeg_available: boolean; yt_dlp_version: string }>('GET', '/api/health'),
+  health: () => request<{ status: string; ffmpeg_available: boolean; yt_dlp_version: string; identify_built_in?: boolean }>('GET', '/api/health'),
   listJobs: () => request<Job[]>('GET', '/api/jobs'),
   /** Start a split from a YouTube link or a file on this computer. */
   createJob: (source: { url: string } | { path: string }) => request<Job>('POST', '/api/jobs', source),

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { api, type LibraryMatch } from '../services/api'
 import { useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
+import { useAppStore } from '../stores/appStore'
 import { useAudioPlayer } from '../hooks/useAudioPlayer'
 import { formatDuration } from '../lib/time'
 import { canMergeWithNext, mergeWithNext, moveEnd, moveStart, needsCheck, needsName, splitAt, updateTrack } from '../lib/tracks'
@@ -317,7 +318,7 @@ export default function ReviewPage() {
   const unnamedCount = tracks.filter((t) => t.include && needsName(t)).length
 
   const identifySongs = async () => {
-    if (!prefs?.acoustid_key) {
+    if (!prefs?.acoustid_key && !useAppStore.getState().identifyBuiltIn) {
       toast('Add your free AcoustID key in Settings to identify songs.')
       navigate('/settings#names')
       return
