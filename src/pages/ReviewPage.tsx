@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Scissors, Download, Loader2, X, FolderOpen, CheckCircle2, AlertTriangle, Fingerprint, Sparkles, ListMusic, Undo2, Redo2, Keyboard, Library } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -27,6 +27,7 @@ import { applyAlbumDetails } from '../lib/albumDetails'
 import ShortcutsDialog from '../components/review/ShortcutsDialog'
 import SaveAgainDialog from '../components/review/SaveAgainDialog'
 import ReviewTransport from '../components/review/ReviewTransport'
+import SongScrubber from '../components/review/SongScrubber'
 import { previousTarget, reviewHeading, songAt } from '../lib/reviewHeader'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
@@ -150,13 +151,25 @@ export default function ReviewPage() {
     return tracks.find((t) => t.source_id === player.sourceId && player.time >= t.start && player.time < t.end)?.id ?? null
   }, [player.playing, player.sourceId, player.time, tracks])
 
+  // The song last started from its row gets a small player under it (see SongScrubber).
+  const [auditionId, setAuditionId] = useState<string | null>(null)
   const onPlay = useCallback(
     (track: Track) => {
+      setAuditionId(track.id)
       if (playingTrackId === track.id) player.toggle(track.source_id)
       else player.playRange(track.source_id, track.start, track.end)
     },
     [player, playingTrackId],
   )
+  const audition = tracks.find((t) => t.id === auditionId)
+  const showScrubber = Boolean(
+    audition && player.sourceId === audition.source_id && player.time >= audition.start - 0.5 && player.time <= audition.end + 0.5,
+  )
+  const toggleAudition = (track: Track) => {
+    if (player.playing) player.toggle(track.source_id)
+    // Resume where it was, still stopping at the end of the song; from the start once it has finished.
+    else player.playRange(track.source_id, player.time >= track.end - 0.5 ? track.start : player.time, track.end)
+  }
   const onPreviewCut = useCallback((track: Track) => player.playRange(track.source_id, track.start - 4, track.start + 4), [player])
 
   // Cuts shared by two neighbouring songs, as indexes of the song that starts there.
@@ -785,8 +798,8 @@ export default function ReviewPage() {
               </thead>
               <tbody>
                 {tracks.map((track, index) => (
+                  <Fragment key={track.id}>
                   <TrackRow
-                    key={track.id}
                     track={track}
                     index={index}
                     isPlaying={playingTrackId === track.id}
@@ -803,6 +816,18 @@ export default function ReviewPage() {
                     onMerge={onMerge}
                     onSelect={setSelectedId}
                   />
+                  {showScrubber && auditionId === track.id && (
+                    <SongScrubber
+                      track={track}
+                      time={player.time}
+                      playing={player.playing}
+                      colSpan={showArtist ? 10 : 9}
+                      onToggle={() => toggleAudition(track)}
+                      onPlayFrom={(t) => player.playRange(track.source_id, t, track.end)}
+                      onInclude={(include) => onChange(track.id, { include })}
+                    />
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
