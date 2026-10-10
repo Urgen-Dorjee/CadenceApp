@@ -296,11 +296,12 @@ async def _find_songs(
     tracklist.flag_short_tracks(tracks)
     _check_cancel(job_id)
 
-    if prefs.identify_songs and prefs.acoustid_key and any(identify.needs_name(t) for t in tracks):
+    key = identify.api_key(prefs.acoustid_key)
+    if prefs.identify_songs and key and any(identify.needs_name(t) for t in tracks):
         async def progress(i: int, total: int) -> None:
             await _update(job_id, progress=96, message=f"Identifying songs {i + 1} of {total}")
         try:
-            await identify.identify_tracks(tracks, {sid: source}, prefs.acoustid_key, on_progress=progress)
+            await identify.identify_tracks(tracks, {sid: source}, key, on_progress=progress)
         except identify.IdentifyError as e:
             log.warning("Song identification skipped: %s", e)
 

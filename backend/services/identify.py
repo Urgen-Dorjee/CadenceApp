@@ -1,7 +1,9 @@
 """Name songs by their sound: Chromaprint fingerprint -> AcoustID / MusicBrainz lookup.
 
-Opt-in (Settings), and needs a free AcoustID application key. Only the audio
-fingerprint and duration are sent, never the audio itself.
+On by default for songs that only have names like "Track 3". Cadence has its own AcoustID
+application key, added when the app is built (core/app_keys.py, kept out of the source code);
+a key of the user's own in Settings is used instead when set. Only the audio fingerprint and
+duration are sent, never the audio itself.
 """
 
 import asyncio
@@ -29,6 +31,23 @@ _GENERIC_TITLE = re.compile(r"^(track|song|untitled( song)?)\s*\d*$", re.IGNOREC
 
 class IdentifyError(Exception):
     """A problem the user can fix (missing key, missing fpcalc, rejected key)."""
+
+
+def app_key() -> str:
+    """Cadence's own AcoustID key: from the environment (development) or added at build time."""
+    key = os.environ.get("CADENCE_ACOUSTID_KEY", "").strip()
+    if key:
+        return key
+    try:
+        from core import app_keys  # type: ignore[attr-defined]  # written by the release build
+    except ImportError:
+        return ""
+    return str(getattr(app_keys, "ACOUSTID", "")).strip()
+
+
+def api_key(user_key: str) -> str:
+    """The key to use: the user's own when set, else Cadence's."""
+    return user_key.strip() or app_key()
 
 
 def find_fpcalc() -> str | None:
@@ -109,7 +128,7 @@ def lookup(api_key: str, duration: int, fp: str) -> dict[str, Any] | None:
         "client": api_key, "duration": duration, "fingerprint": fp,
         "meta": "recordings releasegroups compress", "format": "json",
     }).encode()
-    request = urllib.request.Request(LOOKUP_URL, data=body, headers={"User-Agent": "Cadence/2.1"})
+    request = urllib.request.Request(LOOKUP_URL, data=body, headers={"User-Agent": "Cadence (https://github.com/Urgen-Dorjee/CadenceApp)"})
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             data = json.loads(response.read())
@@ -132,7 +151,7 @@ async def identify_tracks(
 ) -> int:
     """Fill in title/artist for tracks AcoustID recognises, in place. Returns how many were named."""
     if not api_key:
-        raise IdentifyError("Add your AcoustID API key in Settings to identify songs.")
+        raise IdentifyError("Identifying songs isn't available in this copy of Cadence. Add your own AcoustID key in Settings.")
     targets = [t for t in tracks if t.get("include", True) and (not only_unnamed or needs_name(t))]
     named = 0
     for i, track in enumerate(targets):

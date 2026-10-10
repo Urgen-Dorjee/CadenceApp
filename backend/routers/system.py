@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from config import AUDIO_FORMATS, Preferences, load_preferences, save_preferences, settings
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
-from services import pipeline
+from services import identify, pipeline
 from core.ffmpeg_utils import is_ffmpeg_available
 from core import ytdlp_updates
 
@@ -24,6 +24,8 @@ async def health():
         "status": "ok",
         "ffmpeg_available": is_ffmpeg_available(),
         "yt_dlp_version": yt_dlp.version.__version__,
+        # Cadence's own AcoustID key is in this build, so songs can be identified without one of your own.
+        "identify_built_in": bool(identify.app_key()),
     }
 
 

@@ -77,6 +77,7 @@ export function useBackend() {
         useAppStore.getState().setReady({
           ffmpegAvailable: health.ffmpeg_available,
           ytDlpVersion: health.yt_dlp_version,
+          identifyBuiltIn: Boolean(health.identify_built_in),
         })
         usePrefsStore.getState().load().catch(() => {})
         if (!socket) connectSocket()

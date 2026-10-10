@@ -87,3 +87,6 @@ coverage.xml
 
 # Backend build for macOS/Linux packages
 .cadence-build/
+
+# Cadence's own service keys, written by the release build from repository secrets
+backend/core/app_keys.py

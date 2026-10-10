@@ -95,6 +95,14 @@ jobs:
           npm test
           cd backend && python -m pytest -v
 
+      # Cadence's own AcoustID key, for naming songs by their sound. Kept in a repository
+      # secret, not in the source code; without it, people can still add a key of their own.
+      - name: Add the song recognition key
+        shell: bash
+        env:
+          ACOUSTID_KEY: ${{ secrets.ACOUSTID_KEY }}
+        run: echo "ACOUSTID = \"$ACOUSTID_KEY\"" > backend/core/app_keys.py
+
       - name: Build the backend and the interface
         run: |
           npm run build:backend

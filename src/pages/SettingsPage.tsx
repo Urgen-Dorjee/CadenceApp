@@ -108,6 +108,7 @@ export default function SettingsPage() {
   const { hash } = useLocation()
   const ready = useAppStore((s) => s.backend === 'ready')
   const ytDlpVersion = useAppStore((s) => s.ytDlpVersion)
+  const identifyBuiltIn = useAppStore((s) => s.identifyBuiltIn)
   const updateStatus = useAppStore((s) => s.update)
   const prefs = usePrefsStore((s) => s.prefs)
   const storage = usePrefsStore((s) => s.storage)
@@ -409,21 +410,25 @@ export default function SettingsPage() {
         <Section id="names" title="Song names" description="Name songs automatically when a video has no tracklist.">
           <Row
             title="Identify songs by their sound"
-            hint="When songs are found from the audio and only have names like “Track 3”, Cadence fingerprints each one and looks it up on AcoustID / MusicBrainz. Only the fingerprint is sent, never the audio. Coverage of Indian film music is good but not complete."
+            hint="When a video doesn't list its songs, so they only have names like “Track 3”, Cadence recognises each one by its sound on AcoustID / MusicBrainz and fills in the title and singer. Only a fingerprint of the sound is sent, never the audio. Most well-known songs are found; rare uploads and sped-up or remixed copies may not be."
             htmlFor="identify-songs"
           >
             <Switch id="identify-songs" checked={prefs.identify_songs} onChange={(v) => save({ identify_songs: v })} />
           </Row>
           <Row
-            title="AcoustID API key"
+            title={identifyBuiltIn ? 'Your own AcoustID key (optional)' : 'AcoustID API key'}
             hint={
-              <>
-                Free. Create one at{' '}
-                <a href="https://acoustid.org/new-application" target="_blank" rel="noreferrer" className="text-accent hover:underline">
-                  acoustid.org/new-application
-                </a>{' '}
-                (sign in, name it “Cadence”), then paste the key here.
-              </>
+              identifyBuiltIn ? (
+                'Not needed: Cadence has its own. Add one only if you’d rather use a key of your own.'
+              ) : (
+                <>
+                  Free. Create one at{' '}
+                  <a href="https://acoustid.org/new-application" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                    acoustid.org/new-application
+                  </a>{' '}
+                  (sign in, name it “Cadence”), then paste the key here.
+                </>
+              )
             }
             htmlFor="acoustid-key"
             stack
@@ -438,7 +443,7 @@ export default function SettingsPage() {
               onBlur={(e) => e.target.value.trim() !== prefs.acoustid_key && save({ acoustid_key: e.target.value.trim() })}
               spellCheck={false}
             />
-            {prefs.identify_songs && !prefs.acoustid_key && (
+            {prefs.identify_songs && !prefs.acoustid_key && !identifyBuiltIn && (
               <p className="text-xs text-warn mt-1.5">Add a key to turn identification on.</p>
             )}
           </Row>

@@ -232,7 +232,7 @@ async def identify_job(job_id: str, body: ReviewIn):
     if any(not s.get("path") for s in job["sources"]):
         raise HTTPException(status_code=409, detail="The downloaded audio was removed, so songs can't be fingerprinted.")
     try:
-        named = await identify.identify_tracks(tracks, sources, prefs.acoustid_key)
+        named = await identify.identify_tracks(tracks, sources, identify.api_key(prefs.acoustid_key))
     except identify.IdentifyError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return {"tracks": tracks, "named": named}

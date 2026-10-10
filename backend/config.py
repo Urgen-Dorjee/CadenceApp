@@ -62,7 +62,7 @@ if not settings.cadence_token:
 # "original" keeps the downloaded audio as it is (no re-encode); see exporter.original_format.
 AUDIO_FORMATS = ("mp3", "flac", "m4a", "opus", "original")
 # Bumped when a saved preference needs upgrading on load (see load_preferences).
-PREFS_VERSION = 2
+PREFS_VERSION = 3
 
 
 class Preferences(BaseModel):
@@ -90,7 +90,8 @@ class Preferences(BaseModel):
     # Keep downloaded source audio after saving, so a split can be saved again.
     keep_downloads: bool = True
     # Name songs found from the audio (no tracklist) by fingerprint, via AcoustID.
-    identify_songs: bool = False
+    # Name "Track 3"-style songs by their sound (AcoustID). On unless turned off.
+    identify_songs: bool = True
     acoustid_key: str = ""
     # Tidy song/album names with Claude after analysis (sends only text, never audio).
     tidy_names: bool = False
@@ -133,7 +134,10 @@ def load_preferences() -> Preferences:
             # ±2 s was the old default and too narrow to reach the real gap between songs.
             if data.get("snap_window_s") == 2.0:
                 data["snap_window_s"] = 5.0
-            data["version"] = PREFS_VERSION
+        if data.get("version", 1) < 3:
+            # Identifying songs needed a key of your own and was off; Cadence now has its own key.
+            data["identify_songs"] = True
+        data["version"] = PREFS_VERSION
         return Preferences(**data)
     except (OSError, ValueError, TypeError):
         return Preferences()
