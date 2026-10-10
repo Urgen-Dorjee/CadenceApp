@@ -64,7 +64,9 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null) {
     return status
   })
   ipcMain.handle('update:install', () => {
-    if (status.state === 'ready') autoUpdater.quitAndInstall(false, true)
+    // Silent: no installer wizard. Cadence closes, the update installs into the same folder
+    // and Cadence opens again by itself.
+    if (status.state === 'ready') autoUpdater.quitAndInstall(true, true)
   })
 
   if (!app.isPackaged) return

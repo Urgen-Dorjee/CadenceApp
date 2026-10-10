@@ -1,9 +1,6 @@
 import asyncio
 import json
-from types import SimpleNamespace
 
-import anthropic
-import httpx2
 import pytest
 
 from services import name_cleanup
@@ -31,34 +28,32 @@ SUGGESTION = {
 }
 
 
-class FakeMessages:
+class FakeApi:
+    """Stands in for name_cleanup._post."""
+
     def __init__(self, response=None, error=None):
         self.response, self.error, self.calls = response, error, []
 
-    async def create(self, **kwargs):
-        self.calls.append(kwargs)
+    def __call__(self, body, headers):
+        self.calls.append((body, headers))
         if self.error:
             raise self.error
         return self.response
 
 
-def _client(response=None, error=None):
-    messages = FakeMessages(response, error)
-    return SimpleNamespace(beta=SimpleNamespace(messages=messages)), messages
-
-
 def _response(text, stop_reason="end_turn"):
-    return SimpleNamespace(stop_reason=stop_reason, content=[SimpleNamespace(type="text", text=text)])
+    return {"stop_reason": stop_reason, "content": [{"type": "text", "text": text}]}
 
 
 def test_request_sends_only_text_and_enables_fallback():
-    client, messages = _client(_response(json.dumps(SUGGESTION)))
-    result = asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), client=client))
+    api = FakeApi(_response(json.dumps(SUGGESTION)))
+    result = asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), post=api))
     assert result == SUGGESTION
 
-    call = messages.calls[0]
+    call, headers = api.calls[0]
     assert call["model"] == "claude-opus-5-5"
-    assert call["fallbacks"] == "default" and call["betas"] == ["server-side-fallback-2026-07-01"]
+    assert call["fallbacks"] == "default" and headers["anthropic-beta"] == "server-side-fallback-2026-07-01"
+    assert headers["x-api-key"] == "key" and headers["anthropic-version"] == "2023-06-01"
     assert call["output_config"]["effort"] == "low"
     assert call["output_config"]["format"]["type"] == "json_schema"
     text = call["messages"][0]["content"]
@@ -90,17 +85,26 @@ def test_apply_suggestions_ignores_bad_values():
 
 
 def test_refusal_becomes_a_clear_message():
-    client, _ = _client(_response("", stop_reason="refusal"))
     with pytest.raises(name_cleanup.NameCleanupError, match="declined"):
-        asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), client=client))
+        asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), post=FakeApi(_response("", stop_reason="refusal"))))
 
 
 def test_bad_key_becomes_a_clear_message():
-    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
-    error = anthropic.AuthenticationError("invalid x-api-key", response=httpx2.Response(401, request=request), body=None)
-    client, _ = _client(error=error)
+    api = FakeApi(error=name_cleanup.ApiError(401, "invalid x-api-key"))
     with pytest.raises(name_cleanup.NameCleanupError, match="rejected the API key"):
-        asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), client=client))
+        asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), post=api))
+
+
+@pytest.mark.parametrize("status, message, expected", [
+    (0, "timed out", "Couldn't reach Claude"),
+    (400, "Your credit balance is too low", "out of credit"),
+    (429, "", "busy"),
+    (500, "", r"error \(500\)"),
+])
+def test_api_errors_become_clear_messages(status, message, expected):
+    api = FakeApi(error=name_cleanup.ApiError(status, message))
+    with pytest.raises(name_cleanup.NameCleanupError, match=expected):
+        asyncio.run(name_cleanup.suggest_names("key", JOB, _tracks(), post=api))
 
 
 def test_missing_key():

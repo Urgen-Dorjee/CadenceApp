@@ -198,7 +198,7 @@ export default function SettingsPage() {
       case 'downloading':
         return `${v} · Downloading ${updateStatus.version} (${updateStatus.percent ?? 0}%)`
       case 'ready':
-        return `${v} · Version ${updateStatus.version} is ready to install`
+        return `${v} · Version ${updateStatus.version} is ready. Restart to update: Cadence closes, installs it and opens again by itself`
       case 'error':
         return `${v} · ${updateStatus.message}`
       default:

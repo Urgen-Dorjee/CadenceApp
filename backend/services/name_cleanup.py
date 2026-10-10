@@ -5,8 +5,14 @@ names and lengths. Never audio. Uses the user's own Anthropic API key from
 Settings. Results are suggestions; the review screen applies them with Undo.
 """
 
+import asyncio
 import json
-from typing import Any
+import urllib.error
+import urllib.request
+from typing import Any, Callable
+
+API_URL = "https://api.anthropic.com/v1/messages"
+API_VERSION = "2023-06-01"
 
 MODEL = "claude-opus-5-5"
 # Server-side refusal fallback: on a policy decline the API retries on Anthropic's
@@ -120,45 +126,76 @@ def apply_suggestions(
     return new_tracks, new_collection
 
 
-async def suggest_names(api_key: str, job: dict[str, Any], tracks: list[dict[str, Any]], client: Any = None) -> dict[str, Any]:
+class ApiError(Exception):
+    def __init__(self, status: int, message: str = ""):
+        super().__init__(message or f"HTTP {status}")
+        self.status, self.message = status, message
+
+
+def _post(body: dict[str, Any], headers: dict[str, str], timeout: float = 120.0) -> dict[str, Any]:
+    """POST to the Messages API. Blocking. Raises ApiError (status 0 when the server can't be reached).
+
+    A plain request rather than the anthropic library: that library is thousands of files,
+    which made every install and update of Cadence slower for an optional feature.
+    """
+    request = urllib.request.Request(API_URL, data=json.dumps(body).encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as e:
+        try:
+            message = json.loads(e.read()).get("error", {}).get("message", "")
+        except ValueError:
+            message = ""
+        raise ApiError(e.code, message) from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise ApiError(0, str(e)) from e
+
+
+async def suggest_names(
+    api_key: str, job: dict[str, Any], tracks: list[dict[str, Any]], post: Callable[..., dict[str, Any]] = _post
+) -> dict[str, Any]:
     """Ask Claude for clean names. Returns the parsed suggestion dict."""
     if not api_key:
         raise NameCleanupError("Add your Anthropic API key in Settings to tidy names with Claude.")
-    # Imported here: it takes seconds to load and most people never use this.
-    import anthropic
-
-    client = client or anthropic.AsyncAnthropic(api_key=api_key, timeout=120.0)
+    body = {
+        "model": MODEL,
+        "max_tokens": 16000,
+        "fallbacks": "default",
+        "system": SYSTEM_PROMPT,
+        "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
+        "messages": [{"role": "user", "content": build_request_text(job, tracks)}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": API_VERSION,
+        "anthropic-beta": FALLBACK_BETA,
+        "content-type": "application/json",
+    }
     try:
-        response = await client.beta.messages.create(
-            model=MODEL,
-            max_tokens=16000,
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
-            system=SYSTEM_PROMPT,
-            output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
-            messages=[{"role": "user", "content": build_request_text(job, tracks)}],
-        )
-    except anthropic.AuthenticationError as e:
-        raise NameCleanupError("Anthropic rejected the API key. Check it in Settings.") from e
-    except anthropic.PermissionDeniedError as e:
-        raise NameCleanupError("This Anthropic API key isn't allowed to use Claude. Check your account.") from e
-    except anthropic.RateLimitError as e:
-        raise NameCleanupError("Claude is busy or your account hit its limit. Try again in a minute.") from e
-    except anthropic.BadRequestError as e:
-        message = getattr(e, "message", str(e))
-        if "credit" in message.lower() or "billing" in message.lower():
-            raise NameCleanupError("Your Anthropic account is out of credit.") from e
-        raise NameCleanupError(f"Claude couldn't process this request: {message}") from e
-    except anthropic.APIStatusError as e:
-        raise NameCleanupError(f"Claude returned an error ({e.status_code}). Try again later.") from e
-    except anthropic.APIConnectionError as e:
-        raise NameCleanupError("Couldn't reach Claude. Check your internet connection.") from e
+        response = await asyncio.to_thread(post, body, headers)
+    except ApiError as e:
+        message = e.message.lower()
+        if e.status == 0:
+            raise NameCleanupError("Couldn't reach Claude. Check your internet connection.") from e
+        if e.status == 401:
+            raise NameCleanupError("Anthropic rejected the API key. Check it in Settings.") from e
+        if e.status == 403:
+            raise NameCleanupError("This Anthropic API key isn't allowed to use Claude. Check your account.") from e
+        if e.status in (429, 529):
+            raise NameCleanupError("Claude is busy or your account hit its limit. Try again in a minute.") from e
+        if e.status == 400:
+            if "credit" in message or "billing" in message:
+                raise NameCleanupError("Your Anthropic account is out of credit.") from e
+            raise NameCleanupError(f"Claude couldn't process this request: {e.message or 'bad request'}") from e
+        raise NameCleanupError(f"Claude returned an error ({e.status}). Try again later.") from e
 
-    if response.stop_reason == "refusal":
+    stop_reason = response.get("stop_reason")
+    if stop_reason == "refusal":
         raise NameCleanupError("Claude declined to tidy these names. You can still edit them yourself.")
-    if response.stop_reason == "max_tokens":
+    if stop_reason == "max_tokens":
         raise NameCleanupError("The tracklist was too long for one request.")
-    text = next((b.text for b in response.content if b.type == "text"), "")
+    text = next((b.get("text", "") for b in response.get("content") or [] if b.get("type") == "text"), "")
     try:
         return json.loads(text)
     except ValueError as e:

@@ -70,7 +70,7 @@ function StatusBar() {
           <button
             className="font-sans h-5 px-2 rounded bg-accent text-accent-ink font-medium hover:brightness-110"
             onClick={() => window.electronAPI?.installUpdate()}
-            title={`Cadence ${update.version} is ready. Restart to install it.`}
+            title={`Cadence ${update.version} is ready. Cadence closes, updates and opens again by itself.`}
           >
             Restart to update
           </button>
