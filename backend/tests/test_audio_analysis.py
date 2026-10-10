@@ -3,13 +3,14 @@ import numpy as np
 from services.audio_analysis import (
     add_strong_changes,
     boundaries_from_silences,
+    cuts_in_range,
     find_cut_offset,
     novelty_curve,
     silences_from_rms,
     split_long_segments,
     tracks_from_profile,
 )
-from services.audio_profile import BLOCK_S, RATE, profile_from_samples, downsample_peaks
+from services.audio_profile import BLOCK_S, FRAME_S, RATE, AudioProfile, profile_from_samples, downsample_peaks
 
 
 def test_silences_from_rms_finds_quiet_runs():
@@ -191,3 +192,31 @@ def test_refine_tracks_drift_and_flags_cuts_without_a_gap(monkeypatch):
     assert tracks[1]["confidence"] == 0.95
     assert tracks[2]["confidence"] == 0.6  # no gap: shown as "Check"
     assert tracks[1]["end"] == tracks[2]["start"] == 204.5
+
+
+def _profile_with_dips(duration: float, dips: list[float]) -> AudioProfile:
+    rms = np.full(int(duration / FRAME_S), 0.25)
+    for t in dips:
+        rms[int(t / FRAME_S):int(t / FRAME_S) + 4] = 1e-5   # 0.2 s of silence between songs
+    return AudioProfile(duration=duration, rms=rms, peak=rms, features=np.zeros((int(duration / BLOCK_S), 4)))
+
+
+def test_known_number_of_songs_is_found_at_brief_silences():
+    profile = _profile_with_dips(2000, [300, 610, 905, 1210, 1530])
+    cuts = cuts_in_range(profile, 0, 2000, 5)
+    assert [round(t) for t, _ in cuts] == [300, 610, 905, 1210, 1530]
+    assert all(conf >= 0.7 for _, conf in cuts)
+
+
+def test_extra_silences_are_left_out_by_song_length():
+    # 400 is a pause 100 s into a song; the other dips are ~5 minutes apart.
+    profile = _profile_with_dips(1800, [300, 400, 600, 900, 1200, 1500])
+    cuts = cuts_in_range(profile, 0, 1800, 5)
+    assert [round(t) for t, _ in cuts] == [300, 600, 900, 1200, 1500]
+
+
+def test_short_songs_from_brief_silences_are_flagged():
+    profile = _profile_with_dips(1200, [300, 400, 800])
+    cuts = cuts_in_range(profile, 0, 1200, 3)
+    assert [round(t) for t, _ in cuts] == [300, 400, 800]
+    assert [conf for _, conf in cuts] == [0.5, 0.5, 0.75]
