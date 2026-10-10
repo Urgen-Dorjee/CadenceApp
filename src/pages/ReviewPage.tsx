@@ -117,6 +117,11 @@ export default function ReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, dupeKey, reviewable])
   const duplicateIds = tracks.filter((t) => t.include && duplicates[t.id]).map((t) => t.id)
+  // Songs already in the library are unticked once, when first found, so they aren't saved twice.
+  // Ticking one again keeps it ticked.
+  const autoSkipped = useRef(new Set<string>())
+  const [skippedIds, setSkippedIds] = useState<string[]>([])
+  const stillSkipped = skippedIds.filter((tid) => tracks.some((t) => t.id === tid && !t.include))
   const describeMatch = (matches: LibraryMatch[]) =>
     `Already in your library: ${matches.map((m) => [m.artist, m.title].filter(Boolean).join(' - ') + (m.album ? ` (${m.album})` : '')).join('; ')}`
 
@@ -145,6 +150,16 @@ export default function ReviewPage() {
     [edit, sources, tracks],
   )
   const onMerge = useCallback((index: number) => edit((t) => mergeWithNext(t, index)), [edit])
+
+  useEffect(() => {
+    if (job?.status !== 'review') return
+    const fresh = duplicateIds.filter((tid) => !autoSkipped.current.has(tid))
+    if (!fresh.length) return
+    fresh.forEach((tid) => autoSkipped.current.add(tid))
+    setSkippedIds((ids) => [...ids, ...fresh])
+    edit((t) => t.map((x) => (fresh.includes(x.id) ? { ...x, include: false } : x)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duplicates])
 
   const playingTrackId = useMemo(() => {
     if (!player.playing) return null
@@ -755,6 +770,21 @@ export default function ReviewPage() {
               {included.length} of {tracks.length} will be saved
             </span>
           </div>
+          {stillSkipped.length > 0 && !exporting && (
+            <div className="mx-4 mb-2 flex items-center gap-3 rounded-md border border-line bg-raised/60 px-3 py-2" role="status">
+              <Library size={15} className="text-accent shrink-0" aria-hidden="true" />
+              <p className="flex-1 text-[13px]">
+                {stillSkipped.length === 1 ? '1 song is' : `${stillSkipped.length} songs are`} already in your library, so{' '}
+                {stillSkipped.length === 1 ? 'it was' : 'they were'} unticked and won&apos;t be saved twice.
+              </p>
+              <button
+                className="btn-secondary h-7 px-2.5"
+                onClick={() => edit((t) => t.map((x) => (stillSkipped.includes(x.id) ? { ...x, include: true } : x)))}
+              >
+                Save {stillSkipped.length === 1 ? 'it' : 'them'} anyway
+              </button>
+            </div>
+          )}
           {duplicateIds.length > 0 && !exporting && (
             <div className="mx-4 mb-2 flex items-center gap-3 rounded-md border border-warn/40 bg-warn/5 px-3 py-2" role="status">
               <Library size={15} className="text-warn shrink-0" aria-hidden="true" />
@@ -807,7 +837,7 @@ export default function ReviewPage() {
                     canMerge={canMergeWithNext(tracks, index)}
                     hasCutBefore={index > 0 && canMergeWithNext(tracks, index - 1)}
                     showArtist={showArtist}
-                    inLibrary={track.include && duplicates[track.id] ? describeMatch(duplicates[track.id]) : undefined}
+                    inLibrary={duplicates[track.id] ? describeMatch(duplicates[track.id]) : undefined}
                     onChange={onChange}
                     onStart={onStart}
                     onEnd={onEnd}
