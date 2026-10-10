@@ -121,6 +121,11 @@ export interface LibrarySong {
 }
 
 export const api = {
+  /** Lyrics saved with a song; with `online`, looked up on LRCLIB when none are saved. */
+  songLyrics: (id: string, online: boolean) =>
+    request<{ synced: string; plain: string; source: '' | 'saved' | 'lrclib' }>(
+      'GET', `/api/library/songs/${encodeURIComponent(id)}/lyrics${online ? '?online=true' : ''}`,
+    ),
   health: () => request<{ status: string; ffmpeg_available: boolean; yt_dlp_version: string }>('GET', '/api/health'),
   listJobs: () => request<Job[]>('GET', '/api/jobs'),
   /** Start a split from a YouTube link or a file on this computer. */

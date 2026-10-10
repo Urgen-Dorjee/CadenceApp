@@ -20,6 +20,13 @@ interface PlayerState {
   volume: number
   repeat: RepeatMode
   shuffle: boolean
+  /** Playback speed (1 = normal). */
+  rate: number
+  /** Stop playing at this moment (ms since 1970), or at the end of the current song. */
+  sleep: { until: number } | 'end' | null
+  /** The full "Now playing" view (cover, lyrics, up next) is open. */
+  expanded: boolean
+  setExpanded: (expanded: boolean) => void
   current: () => LibrarySong | null
   playList: (songs: LibrarySong[], index: number) => void
   /** Play these songs after the current one. */
@@ -36,31 +43,38 @@ interface PlayerState {
   next: (auto?: boolean) => void
   previous: () => void
   seek: (time: number) => void
+  /** Jump forward (or back, when negative) by this many seconds. */
+  skip: (seconds: number) => void
   setVolume: (volume: number) => void
+  setRate: (rate: number) => void
+  /** Stop after this many minutes, at the end of this song, or never (null). */
+  setSleep: (minutes: number | 'end' | null) => void
   cycleRepeat: () => void
   toggleShuffle: () => void
   close: () => void
 }
 
-// Volume, repeat and shuffle are remembered on this computer between sessions.
+// Volume, repeat, shuffle and speed are remembered on this computer between sessions.
 const SETTINGS_KEY = 'cadence.player'
-function savedSettings(): { volume: number; repeat: RepeatMode; shuffle: boolean } {
-  const defaults = { volume: 1, repeat: 'off' as RepeatMode, shuffle: false }
+export const RATES = [0.75, 0.9, 1, 1.1, 1.25, 1.5]
+function savedSettings(): { volume: number; repeat: RepeatMode; shuffle: boolean; rate: number } {
+  const defaults = { volume: 1, repeat: 'off' as RepeatMode, shuffle: false, rate: 1 }
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')
     return {
       volume: typeof saved.volume === 'number' ? Math.min(1, Math.max(0, saved.volume)) : defaults.volume,
       repeat: REPEAT_ORDER.includes(saved.repeat) ? saved.repeat : defaults.repeat,
       shuffle: typeof saved.shuffle === 'boolean' ? saved.shuffle : defaults.shuffle,
+      rate: RATES.includes(saved.rate) ? saved.rate : defaults.rate,
     }
   } catch {
     return defaults
   }
 }
 function saveSettings() {
-  const { volume, repeat, shuffle } = usePlayerStore.getState()
+  const { volume, repeat, shuffle, rate } = usePlayerStore.getState()
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ volume, repeat, shuffle }))
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ volume, repeat, shuffle, rate }))
   } catch {
     // private window or storage blocked: settings just aren't remembered
   }
@@ -74,6 +88,7 @@ function element(): HTMLAudioElement {
   audio = new Audio()
   audio.preload = 'metadata'
   audio.volume = usePlayerStore.getState().volume
+  audio.defaultPlaybackRate = audio.playbackRate = usePlayerStore.getState().rate
   audio.addEventListener('play', () => {
     usePlayerStore.setState({ playing: true })
     if (media) media.playbackState = 'playing'
@@ -82,13 +97,26 @@ function element(): HTMLAudioElement {
     usePlayerStore.setState({ playing: false })
     if (media) media.playbackState = 'paused'
   })
-  audio.addEventListener('timeupdate', () => usePlayerStore.setState({ time: audio!.currentTime }))
+  audio.addEventListener('timeupdate', () => {
+    usePlayerStore.setState({ time: audio!.currentTime })
+    const { sleep } = usePlayerStore.getState()
+    if (sleep && sleep !== 'end' && Date.now() >= sleep.until) {
+      audio!.pause()
+      usePlayerStore.setState({ sleep: null })
+    }
+  })
   audio.addEventListener('durationchange', () => {
     usePlayerStore.setState({ duration: audio!.duration || 0 })
     updatePosition()
   })
   audio.addEventListener('seeked', updatePosition)
-  audio.addEventListener('ended', () => usePlayerStore.getState().next(true))
+  audio.addEventListener('ended', () => {
+    if (usePlayerStore.getState().sleep === 'end') {
+      usePlayerStore.setState({ sleep: null, playing: false })
+      return
+    }
+    usePlayerStore.getState().next(true)
+  })
   window.addEventListener(AUDIO_START_EVENT, (e) => {
     if ((e as CustomEvent).detail !== 'library') audio?.pause()
   })
@@ -125,6 +153,8 @@ function updatePosition() {
 function load(song: LibrarySong) {
   const el = element()
   el.src = api.songAudioUrl(song.id)
+  // A new source resets the speed to the default one.
+  el.defaultPlaybackRate = el.playbackRate = usePlayerStore.getState().rate
   announceAudioStart('library')
   el.play().catch(() => {})
   if (media && typeof MediaMetadata !== 'undefined') {
@@ -158,7 +188,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   playing: false,
   time: 0,
   duration: 0,
+  sleep: null,
+  expanded: false,
   ...initial,
+  setExpanded: (expanded) => set({ expanded: expanded && get().index >= 0 }),
   current: () => get().queue[get().index] ?? null,
   playList: (songs, index) => {
     if (!songs[index]) return
@@ -252,6 +285,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     el.currentTime = Math.max(0, Math.min(time, el.duration || time))
     set({ time: el.currentTime })
   },
+  skip: (seconds) => {
+    if (!get().current()) return
+    get().seek(element().currentTime + seconds)
+  },
+  setRate: (rate) => {
+    const el = element()
+    el.defaultPlaybackRate = el.playbackRate = rate
+    set({ rate })
+    saveSettings()
+  },
+  setSleep: (minutes) =>
+    set({ sleep: minutes === null ? null : minutes === 'end' ? 'end' : { until: Date.now() + minutes * 60_000 } }),
   setVolume: (volume) => {
     element().volume = volume
     set({ volume })
@@ -277,6 +322,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   close: () => {
     stop()
-    set({ queue: [], original: [], index: -1, playing: false, time: 0, duration: 0 })
+    set({ queue: [], original: [], index: -1, playing: false, time: 0, duration: 0, sleep: null, expanded: false })
   },
 }))

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { ArrowLeft, FolderOpen, ListEnd, ListPlus, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Send, Shuffle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -8,7 +8,7 @@ import { useAppStore } from '../stores/appStore'
 import { useJobsStore } from '../stores/jobsStore'
 import { usePlayerStore } from '../stores/playerStore'
 import { usePrefsStore } from '../stores/prefsStore'
-import { albumOf, artistOf, filterSongs, groupSongs, sortSongs, type LibrarySort, type SongGroup } from '../lib/library'
+import { albumOf, artistOf, filterSongs, groupSongs, sortSongs, type LibraryIntent, type LibrarySort, type SongGroup } from '../lib/library'
 import { formatDuration, formatTime } from '../lib/time'
 import { SongCover } from '../components/layout/PlayerBar'
 import SendDialog from '../components/library/SendDialog'
@@ -186,6 +186,22 @@ export default function LibraryPage() {
   const [scanning, setScanning] = useState(false)
   const [editing, setEditing] = useState<LibrarySong[] | null>(null)
   const [sending, setSending] = useState<LibrarySong[] | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // The player's menu: open the playing song's album or singer, or edit or send it.
+  useEffect(() => {
+    const intent = location.state as LibraryIntent | null
+    if (!intent) return
+    if (intent.open) {
+      setQuery('')
+      setView(intent.open.kind === 'artist' ? 'artists' : 'albums')
+      setOpen(intent.open)
+    }
+    if (intent.edit) setEditing(intent.edit)
+    if (intent.send) setSending(intent.send)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
 
   const load = useCallback(() => api.librarySongs().then(setSongs).catch((e) => toast.error(e.message)), [])
 

@@ -102,3 +102,40 @@ def embed(path: str, fmt: str, text: str) -> None:
         audio = mutagen.File(path)
         audio["lyrics"] = [text]
         audio.save()
+
+
+def _looks_synced(text: str) -> bool:
+    return any(line.lstrip().startswith("[") and ":" in line[:12] for line in text.splitlines()[:20])
+
+
+def read_saved(path: str, fmt: str) -> dict[str, str] | None:
+    """Lyrics already saved with a song: the .lrc file next to it, else the song's own tags. Blocking."""
+    lrc = lrc_path(path)
+    if os.path.isfile(lrc):
+        with open(lrc, encoding="utf-8", errors="replace") as f:
+            synced = f.read().strip()
+        if synced:
+            return {"synced": synced, "plain": _strip_times(synced)}
+    text = ""
+    try:
+        if fmt == "mp3":
+            from mutagen.id3 import ID3
+
+            frames = ID3(path).getall("USLT")
+            text = frames[0].text if frames else ""
+        elif fmt == "m4a":
+            from mutagen.mp4 import MP4
+
+            text = (MP4(path).tags or {}).get("\xa9lyr", [""])[0]
+        else:
+            import mutagen
+
+            audio = mutagen.File(path)
+            if audio is not None and audio.tags is not None:
+                text = (audio.tags.get("lyrics") or audio.tags.get("LYRICS") or [""])[0]
+    except Exception:  # noqa: BLE001 - unreadable tags just mean no lyrics
+        text = ""
+    text = (text or "").strip()
+    if not text:
+        return None
+    return {"synced": text, "plain": _strip_times(text)} if _looks_synced(text) else {"synced": "", "plain": text}

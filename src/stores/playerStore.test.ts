@@ -93,3 +93,39 @@ describe('player queue', () => {
     expect(ids()).toEqual(['a'])
   })
 })
+
+describe('speed, sleep timer and Now playing', () => {
+  it('remembers the speed and applies it to each new song', () => {
+    const p = usePlayerStore.getState()
+    p.playList([song('a'), song('b')], 0)
+    p.setRate(1.25)
+    p.next()
+    expect(usePlayerStore.getState().rate).toBe(1.25)
+    expect(JSON.parse(localStorage.getItem('cadence.player') || '{}').rate).toBe(1.25)
+    p.setRate(1)
+  })
+
+  it('sets and clears a sleep timer', () => {
+    const p = usePlayerStore.getState()
+    p.playList([song('a')], 0)
+    const before = Date.now()
+    p.setSleep(30)
+    const sleep = usePlayerStore.getState().sleep
+    expect(sleep !== null && sleep !== 'end' && sleep.until).toBeGreaterThanOrEqual(before + 30 * 60_000)
+    p.setSleep('end')
+    expect(usePlayerStore.getState().sleep).toBe('end')
+    p.close()
+    expect(usePlayerStore.getState().sleep).toBeNull()
+  })
+
+  it('opens Now playing only while something is queued', () => {
+    const p = usePlayerStore.getState()
+    p.setExpanded(true)
+    expect(usePlayerStore.getState().expanded).toBe(false)
+    p.playList([song('a')], 0)
+    p.setExpanded(true)
+    expect(usePlayerStore.getState().expanded).toBe(true)
+    p.close()
+    expect(usePlayerStore.getState().expanded).toBe(false)
+  })
+})

@@ -69,3 +69,15 @@ export function groupSongs(songs: LibrarySong[], by: 'artist' | 'album'): SongGr
     })
     .sort((a, b) => byText(a.name, b.name))
 }
+
+/** What another screen (the player) asks the Library to do when it opens. */
+export interface LibraryIntent {
+  open?: { kind: 'artist' | 'album'; key: string }
+  edit?: LibrarySong[]
+  send?: LibrarySong[]
+}
+
+/** Open a song's album or singer page in the Library. */
+export function groupIntent(song: LibrarySong, kind: 'artist' | 'album'): LibraryIntent {
+  return { open: { kind, key: (kind === 'album' ? albumOf(song) : artistOf(song)).toLowerCase() } }
+}
