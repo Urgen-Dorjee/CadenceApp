@@ -309,7 +309,7 @@ async def _find_songs(
                     title=song["title"], artist=song["singer"], start=at, end=until,
                     origin="description", source_id=sid, confidence=conf,
                 ))
-    if len(tracks) > 1 or (tracks and tracks[0]["origin"] != "silence"):
+    if tracks and tracks[0]["origin"] != "silence":
         tracks = _split_long_tracks(tracks, profile, sid)
     await audio_analysis.refine_boundaries(tracks, audio_path, duration, prefs.snap_window_s)
     tracklist.flag_short_tracks(tracks)
@@ -354,12 +354,29 @@ async def _find_songs(
     )
 
 
+# Only a tracklist read from text can stop early; chapters, cue sheets and pasted lists are
+# the uploader's or the user's own, and a long song in them is a long song.
+SPLITTABLE_ORIGINS = ("description", "comment")
+STOPPED_EARLY_SECONDS = 20 * 60.0
+
+
+def _stopped_early(track: dict[str, Any], tracks: list[dict[str, Any]]) -> bool:
+    """True for a song from a text tracklist so long the list must have stopped before the
+    video did: over 20 minutes and over three times the list's typical song."""
+    if track["origin"] not in SPLITTABLE_ORIGINS:
+        return False
+    length = track["end"] - track["start"]
+    others = sorted(t["end"] - t["start"] for t in tracks if t is not track)
+    typical = others[len(others) // 2] if others else 0.0
+    return length > max(STOPPED_EARLY_SECONDS, 3 * typical)
+
+
 def _split_long_tracks(tracks: list[dict[str, Any]], profile: Any, sid: str) -> list[dict[str, Any]]:
-    """Listen inside any song from a tracklist that's too long to be one song (the tracklist
-    stopped early or skipped some), and cut it where the songs change."""
+    """Listen inside a song from a text tracklist that stopped early (see `_stopped_early`)
+    and cut it where the songs change. Songs that are merely long are left whole."""
     result: list[dict[str, Any]] = []
     for track in tracks:
-        if track["origin"] in ("playlist", "single", "manual") or track["end"] - track["start"] <= tracklist.LONG_TRACK_SECONDS:
+        if not _stopped_early(track, tracks):
             result.append(track)
             continue
         cuts = audio_analysis.cuts_inside(profile, track["start"], track["end"])
