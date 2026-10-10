@@ -1,6 +1,7 @@
 import os
 
 from config import Preferences
+from services import library
 from services.library import relative_path, sanitize_component, unique_path
 
 
@@ -45,3 +46,28 @@ def test_unique_path(tmp_path):
     assert unique_path(str(p)) == str(p)
     p.write_text("x")
     assert unique_path(str(p)) == str(tmp_path / "song (2).mp3")
+
+
+def test_long_video_titles_make_short_folder_names():
+    title = "Chicago, Air Supply, Bee Gees, Phil Collins, Steel Heart, and more… A classic soft rock songs!!!"
+    collection = {"type": "collection", "name": title, "album": title, "artist": "", "year": ""}
+    rel = library.relative_path({"title": "Hard to Say I'm Sorry", "artist": "Chicago"}, 1, collection, Preferences())
+    folder = rel.split(os.sep)[-2]
+    assert folder == "Chicago, Air Supply, Bee Gees, Phil Collins, Steel Heart"
+    assert len(folder) <= library.MAX_FOLDER and not folder.endswith((",", " ", "…"))
+    assert rel.endswith("01 - Hard to Say I'm Sorry")
+
+
+def test_whole_path_stays_under_the_windows_limit():
+    root = os.path.join("C:", "Users", "someone", "Music", *["Deep folder"] * 8)
+    rel = os.path.join("Collections", "A" * 60, "01 - " + "Very long song name " * 6)
+    fitted = library.fit_path(root, rel, "mp3")
+    assert len(os.path.join(root, fitted + ".mp3")) <= library.MAX_PATH_LEN
+    assert fitted.startswith(os.path.join("Collections", "A" * 60, "01 - Very long"))
+    assert library.fit_path("Music", os.path.join("Singles", "Song"), "mp3") == os.path.join("Singles", "Song")
+
+
+def test_shorten_cuts_at_a_word():
+    assert library.shorten("one two three four", 15) == "one two three"
+    assert library.shorten("short", 12) == "short"
+    assert library.shorten("x" * 20, 10) == "x" * 10

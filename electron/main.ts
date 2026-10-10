@@ -219,8 +219,16 @@ function registerIpcHandlers() {
     return dark
   })
 
-  ipcMain.handle('shell:showItemInFolder', (_event, target: string) => {
-    if (typeof target === 'string' && fs.existsSync(target)) shell.showItemInFolder(target)
+  ipcMain.handle('shell:showItemInFolder', async (_event, target: string) => {
+    if (typeof target !== 'string' || !target) return
+    if (fs.existsSync(target)) {
+      shell.showItemInFolder(target)
+      return
+    }
+    // The file was moved or deleted: open the nearest folder that still exists instead of doing nothing.
+    let folder = path.dirname(target)
+    while (!fs.existsSync(folder) && path.dirname(folder) !== folder) folder = path.dirname(folder)
+    if (fs.existsSync(folder)) await shell.openPath(folder)
   })
 
   ipcMain.handle('shell:openPath', async (_event, target: string) => {

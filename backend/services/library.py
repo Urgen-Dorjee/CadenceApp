@@ -9,9 +9,27 @@ from config import Preferences
 _ILLEGAL_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 _MAX_COMPONENT = 120
+# Folder names come from video titles, which can be very long ("Chicago, Air Supply, Bee Gees, Phil
+# Collins, Steel Heart, and more… A classic soft rock songs!!!"). Keep them short enough to read, and
+# the whole path well under Windows' 260-character limit (room is left for " (2)" and a .lrc file).
+MAX_FOLDER = 60
+MAX_FILE = 100
+MAX_PATH_LEN = 240
+_TRAILING = " .,;:-–—…&+|"
 
 
-def sanitize_component(name: str, fallback: str = "Untitled") -> str:
+def shorten(name: str, limit: int) -> str:
+    """`name` cut to at most `limit` characters, at a word boundary when there is one nearby."""
+    if len(name) <= limit:
+        return name
+    cut = name[:limit]
+    space = cut.rfind(" ")
+    if space >= limit * 0.6:
+        cut = cut[:space]
+    return cut.rstrip(_TRAILING) or name[:limit]
+
+
+def sanitize_component(name: str, fallback: str = "Untitled", limit: int = _MAX_COMPONENT) -> str:
     """Make one path component valid on Windows (and everywhere else)."""
     name = _ILLEGAL_RE.sub(" ", name)
     name = re.sub(r"\s{2,}", " ", name).strip().rstrip(". ")
@@ -19,7 +37,7 @@ def sanitize_component(name: str, fallback: str = "Untitled") -> str:
         name = fallback
     if name.split(".")[0].upper() in _RESERVED:
         name = f"_{name}"
-    return name[:_MAX_COMPONENT].rstrip(". ")
+    return shorten(name, limit).rstrip(". ")
 
 
 def same_file_key(path: str) -> str:
@@ -57,8 +75,20 @@ def relative_path(track: dict[str, Any], number: int, collection: dict[str, Any]
         rendered = template.format(**values)
     except (KeyError, IndexError, ValueError):
         rendered = template_for(collection.get("type", "collection"), Preferences()).format(**values)
-    parts = [sanitize_component(p) for p in re.split(r"[\\/]+", rendered) if p.strip()]
-    return os.path.join(*parts) if parts else sanitize_component(values["title"])
+    pieces = [p for p in re.split(r"[\\/]+", rendered) if p.strip()]
+    parts = [sanitize_component(p, limit=MAX_FOLDER) for p in pieces[:-1]]
+    parts += [sanitize_component(p, limit=MAX_FILE) for p in pieces[-1:]]
+    return os.path.join(*parts) if parts else sanitize_component(values["title"], limit=MAX_FILE)
+
+
+def fit_path(root: str, rel: str, ext: str) -> str:
+    """`rel` with its file name shortened so root/rel.ext stays under MAX_PATH_LEN."""
+    folder, name = os.path.split(rel)
+    over = len(os.path.join(root, f"{rel}.{ext}")) - MAX_PATH_LEN
+    if over <= 0:
+        return rel
+    name = shorten(name, max(30, len(name) - over))
+    return os.path.join(folder, name) if folder else name
 
 
 def unique_path(path: str, replaceable: set[str] | frozenset[str] = frozenset()) -> str:
