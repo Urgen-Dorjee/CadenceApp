@@ -309,6 +309,8 @@ async def _find_songs(
                     title=song["title"], artist=song["singer"], start=at, end=until,
                     origin="description", source_id=sid, confidence=conf,
                 ))
+    if len(tracks) > 1 or (tracks and tracks[0]["origin"] != "silence"):
+        tracks = _split_long_tracks(tracks, profile, sid)
     await audio_analysis.refine_boundaries(tracks, audio_path, duration, prefs.snap_window_s)
     tracklist.flag_short_tracks(tracks)
     _check_cancel(job_id)
@@ -350,6 +352,25 @@ async def _find_songs(
         job_id, status="review", progress=100, sources=[source], tracks=tracks, collection=collection,
         thumbnail=source["thumbnail"], message=_review_message(tracks),
     )
+
+
+def _split_long_tracks(tracks: list[dict[str, Any]], profile: Any, sid: str) -> list[dict[str, Any]]:
+    """Listen inside any song from a tracklist that's too long to be one song (the tracklist
+    stopped early or skipped some), and cut it where the songs change."""
+    result: list[dict[str, Any]] = []
+    for track in tracks:
+        if track["origin"] in ("playlist", "single", "manual") or track["end"] - track["start"] <= tracklist.LONG_TRACK_SECONDS:
+            result.append(track)
+            continue
+        cuts = audio_analysis.cuts_inside(profile, track["start"], track["end"])
+        edges = [track["start"]] + [t for t, _ in cuts] + [track["end"]]
+        result.append({**track, "end": edges[1]})
+        for i, (at, conf) in enumerate(cuts):
+            result.append(tracklist.make_track(
+                title=f"Track {len(result) + 1}", start=at, end=edges[i + 2], origin="silence",
+                source_id=sid, confidence=min(conf, 0.6),
+            ))
+    return result
 
 
 async def _analyze_playlist(job_id: str, info: dict[str, Any], out_dir: str, loop: asyncio.AbstractEventLoop) -> None:

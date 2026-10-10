@@ -173,7 +173,7 @@ def short_dips(profile: AudioProfile, start: float, end: float, margin: float = 
     dips: list[tuple[float, float]] = []
     for a, b in runs:
         i = int(a + np.argmin(db[a:b]))
-        t = round(i * FRAME_S, 3)
+        t = round((a + b) / 2 * FRAME_S, 3)  # the middle of the silence
         if not (start + margin < t < end - margin):
             continue
         depth = float(np.median(db)) - max(float(db[i]), -100.0)
@@ -257,12 +257,38 @@ def cuts_in_range(profile: AudioProfile, start: float, end: float, count: int,
     return sorted(cuts)
 
 
+def _gaps_look_like_songs(cuts: list[tuple[float, float]], duration: float) -> bool:
+    if len(cuts) < 3:
+        return False
+    edges = [0.0] + [t for t, _ in cuts] + [duration]
+    lengths = sorted(b - a for a, b in zip(edges, edges[1:]))
+    return SONG_MIN_S <= lengths[len(lengths) // 2] <= MAX_TRACK_SECONDS
+
+
+def cuts_inside(profile: AudioProfile, start: float, end: float) -> list[tuple[float, float]]:
+    """Where songs change between `start` and `end`, found by listening (number of songs unknown)."""
+    edges = [(t["start"], t["confidence"]) for t in tracks_from_profile(profile, "")][1:]
+    return [(t, c) for t, c in edges if start + MIN_TRACK_SECONDS <= t <= end - MIN_TRACK_SECONDS]
+
+
 def tracks_from_profile(profile: AudioProfile, source_id: str) -> list[dict[str, Any]]:
     """Songs found from the audio alone: silent gaps first, then music changes."""
     duration = profile.duration
-    cuts = boundaries_from_silences(silences_from_rms(profile.rms), duration)
+    # Split-second silences first: they are how many jukeboxes separate songs, and they are
+    # far deeper than a quiet passage inside a song. Then longer quiet gaps.
+    cuts: list[tuple[float, float]] = []
+    for t, _ in short_dips(profile, 0, duration, margin=MIN_TRACK_SECONDS):
+        if all(abs(t - c) >= MIN_TRACK_SECONDS for c, _ in cuts):
+            cuts.append((t, 0.7))
+    for t, conf in boundaries_from_silences(silences_from_rms(profile.rms), duration):
+        if all(abs(t - c) >= MIN_TRACK_SECONDS for c, _ in cuts):
+            cuts.append((t, conf))
+    cuts.sort()
     novelty = novelty_curve(profile.features)
-    cuts = add_strong_changes(cuts, novelty, duration)
+    # Music changes without any silence are guesses. When the silences already divide the
+    # video into song-length pieces, use them only to split a piece that is still too long.
+    if not _gaps_look_like_songs(cuts, duration):
+        cuts = add_strong_changes(cuts, novelty, duration)
     cuts = split_long_segments(cuts, novelty, duration)
     if not cuts:
         return [make_track(title="Track 1", start=0, end=duration, origin="silence", source_id=source_id, confidence=0.3)]

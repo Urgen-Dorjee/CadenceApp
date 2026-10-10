@@ -270,12 +270,12 @@ def tracks_from_pasted(
 SHORT_TRACK_SECONDS = 45.0
 
 
-LONG_TRACK_SECONDS = 15 * 60.0
+LONG_TRACK_SECONDS = 10 * 60.0
 
 
 def flag_short_tracks(tracks: list[dict[str, Any]]) -> None:
     """Ask the user about segments under 45 s (usually an intro or outro, not a song) and,
-    in a video of several songs, over 15 minutes (almost certainly more than one song)."""
+    in a video of several songs, over 10 minutes (almost certainly more than one song)."""
     for t in tracks:
         if t["origin"] in ("playlist", "single", "manual"):
             continue

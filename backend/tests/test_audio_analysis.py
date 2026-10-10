@@ -4,6 +4,7 @@ from services.audio_analysis import (
     add_strong_changes,
     boundaries_from_silences,
     cuts_in_range,
+    cuts_inside,
     find_cut_offset,
     novelty_curve,
     silences_from_rms,
@@ -220,3 +221,29 @@ def test_short_songs_from_brief_silences_are_flagged():
     cuts = cuts_in_range(profile, 0, 1200, 3)
     assert [round(t) for t, _ in cuts] == [300, 400, 800]
     assert [conf for _, conf in cuts] == [0.5, 0.5, 0.75]
+
+
+def test_listening_finds_songs_at_brief_silences():
+    # A jukebox with only 0.2 s of silence between songs, every ~5 minutes.
+    profile = _profile_with_dips(1800, [300, 610, 905, 1210, 1530])
+    tracks = tracks_from_profile(profile, "s")
+    assert [round(t["start"]) for t in tracks] == [0, 300, 610, 905, 1210, 1530]
+
+
+def test_cuts_inside_a_range_come_from_listening():
+    profile = _profile_with_dips(1800, [300, 610, 905, 1210, 1530])
+    assert [round(t) for t, _ in cuts_inside(profile, 600, 1800)] == [905, 1210, 1530]
+
+
+def test_tracklist_songs_too_long_to_be_one_song_are_split_by_listening():
+    from services import pipeline
+    from services.tracklist import make_track
+
+    profile = _profile_with_dips(1800, [300, 610, 905, 1210, 1530])
+    # The description timed only the first two songs.
+    timed = [make_track(title="A", start=0, end=300, origin="description", source_id="s"),
+             make_track(title="B", start=300, end=1800, origin="description", source_id="s")]
+    tracks = pipeline._split_long_tracks(timed, profile, "s")
+    assert [round(t["start"]) for t in tracks] == [0, 300, 610, 905, 1210, 1530]
+    assert [t["title"] for t in tracks[:2]] == ["A", "B"]
+    assert all(t["confidence"] < 0.7 for t in tracks[2:])   # new songs are marked Check
