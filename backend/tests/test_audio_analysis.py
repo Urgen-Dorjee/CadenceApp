@@ -7,8 +7,8 @@ from services.audio_analysis import (
     cuts_inside,
     find_cut_offset,
     novelty_curve,
+    same_song_both_sides,
     silences_from_rms,
-    split_long_segments,
     tracks_from_profile,
 )
 from services.audio_profile import BLOCK_S, FRAME_S, RATE, AudioProfile, profile_from_samples, downsample_peaks
@@ -64,18 +64,6 @@ def test_strong_changes_respect_existing_silence_cuts():
     curve = novelty_curve(_step_features([300], n=n))
     cuts = add_strong_changes([(160.0, 0.85)], curve, duration=n * BLOCK_S)
     assert cuts == [(160.0, 0.85)]  # the change at 150 s is within 90 s of a real gap
-
-
-def test_long_segment_is_split_at_its_strongest_change():
-    novelty = np.zeros(2000)       # 1000 s
-    novelty[1000] = 2.0            # moderate change at 500 s
-    cuts = split_long_segments([], novelty, duration=1000)
-    assert [t for t, _ in cuts] == [500.25]
-
-
-def test_long_segment_without_a_clear_change_is_left_alone():
-    novelty = np.full(2000, 0.5)
-    assert split_long_segments([], novelty, duration=1000) == []
 
 
 def test_profile_finds_gaps_and_crossfades_in_synthetic_audio():
@@ -268,3 +256,58 @@ def test_listening_keeps_a_long_song_whole_between_clear_gaps():
     profile.features[:] = np.random.default_rng(1).normal(size=profile.features.shape)
     starts = [round(t["start"]) for t in tracks_from_profile(profile, "s")]
     assert starts == [0] + edges
+
+
+# --- Songs with structure: verses, a chorus that comes back, instrumental breaks ---
+
+_NOTES = {"C": 0, "C#": 1, "D": 2, "D#": 3, "E": 4, "F": 5, "F#": 6, "G": 7, "G#": 8, "A": 9, "A#": 10, "B": 11}
+
+
+def _chord(name: str, seconds: float, rng: np.random.Generator, bright: bool = False) -> np.ndarray:
+    """A major or minor ("m") triad with harmonics, plus a hi-hat-like hiss when `bright`."""
+    root = _NOTES[name.rstrip("m")]
+    steps = (0, 3, 7) if name.endswith("m") else (0, 4, 7)
+    t = np.arange(int(seconds * RATE)) / RATE
+    x = np.zeros_like(t)
+    for step in steps:
+        f = 220 * 2 ** ((root + step) / 12)
+        x += sum(np.sin(2 * np.pi * f * k * t) / k for k in (1, 2, 3))
+    x = 0.08 * x + (0.12 if bright else 0.02) * rng.normal(size=len(t))
+    return x.astype(np.float32)
+
+
+def _structured_song(sections: str, parts: dict[str, list[str]], seed: int, chord_s: float = 4.0) -> np.ndarray:
+    """Sections like "VCIVC": each letter plays its chord progression; "I" is a bright break."""
+    rng = np.random.default_rng(seed)
+    return np.concatenate([_chord(c, chord_s, rng, bright=s == "I") for s in sections for c in parts[s] * 2])
+
+
+_SONG_A = {"V": ["C", "Am", "F", "G"], "C": ["F", "G", "C", "Em"], "I": ["Dm", "E", "Dm", "E"]}
+_SONG_B = {"V": ["F#", "D#m", "B", "C#"], "C": ["G#m", "F#", "C#", "B"], "I": ["A#m", "G#", "A#m", "G#"]}
+
+
+def test_a_returning_chorus_means_one_song_and_different_songs_do_not_repeat():
+    a = _structured_song("VCIVC", _SONG_A, seed=1)          # 160 s, sharp change at the break
+    b = _structured_song("VCVC", _SONG_B, seed=2)
+    one = profile_from_samples(a)
+    assert same_song_both_sides(one, 64.0)                   # the break: chorus before and after
+    two = profile_from_samples(np.concatenate([a, b]))
+    assert not same_song_both_sides(two, len(a) / RATE)
+
+
+def test_a_long_song_with_sharp_changes_is_kept_whole_between_other_songs():
+    """8.5 minutes, louder bright breaks between choruses: the old splitter cut it for its length."""
+    gap = np.zeros(int(1.5 * RATE), np.float32)
+    first = _structured_song("VCVC", _SONG_B, seed=3)                  # 128 s
+    long_song = _structured_song("VCIVCIVCIVCIVCC", _SONG_A, seed=4)   # 480 s
+    last = _structured_song("VCVC", _SONG_B, seed=5)
+    audio = np.concatenate([first, gap, long_song, gap, last])
+    starts = [t["start"] for t in tracks_from_profile(profile_from_samples(audio), "s")]
+    assert len(starts) == 3
+    assert abs(starts[1] - 128.75) < 1 and abs(starts[2] - (128 + 1.5 + 480 + 0.75)) < 1
+
+
+def test_a_short_video_without_any_silence_is_one_song():
+    song = _structured_song("VCIVCIVC", _SONG_A, seed=6)                # 256 s with sharp breaks
+    tracks = tracks_from_profile(profile_from_samples(song), "s")
+    assert len(tracks) == 1 and tracks[0]["confidence"] >= 0.7

@@ -113,3 +113,27 @@ def test_cadence_key_is_used_unless_the_user_has_their_own(monkeypatch):
     monkeypatch.setitem(sys.modules, "core.app_keys", empty)
     monkeypatch.setattr(core, "app_keys", empty, raising=False)
     assert identify.api_key("") == ""
+
+
+def _named(title, start, end, origin="silence", artist="Kumar Sanu"):
+    track = make_track(title=title, start=start, end=end, origin=origin, source_id="s", confidence=0.6, artist=artist)
+    track["match"] = {"source": "acoustid", "score": 0.9, "album": ""}
+    return track
+
+
+def test_halves_of_one_song_cut_by_listening_are_joined():
+    tracks = [_named("Ek Ladki", 0, 200), _named("Tujhe Dekha", 200, 330), _named("tujhe dekha", 330, 480), _named("Ek Ladki", 480, 700)]
+    merged = identify.merge_same_recordings(tracks)
+    assert [(t["title"], t["start"], t["end"]) for t in merged] == [
+        ("Ek Ladki", 0, 200), ("Tujhe Dekha", 200, 480), ("Ek Ladki", 480, 700),
+    ]
+
+
+def test_tracklist_songs_and_unrecognised_pieces_are_never_joined():
+    chapters = [_named("Intro", 0, 100, origin="chapters"), _named("Intro", 100, 200, origin="chapters")]
+    assert len(identify.merge_same_recordings(chapters)) == 2
+    unknown = [make_track(title="Track 1", start=0, end=200, origin="silence", source_id="s"),
+               make_track(title="Track 1", start=200, end=400, origin="silence", source_id="s")]
+    assert len(identify.merge_same_recordings(unknown)) == 2
+    other_singer = [_named("Pyar", 0, 200), _named("Pyar", 200, 400, artist="Lata Mangeshkar")]
+    assert len(identify.merge_same_recordings(other_singer)) == 2

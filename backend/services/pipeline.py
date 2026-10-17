@@ -323,6 +323,7 @@ async def _find_songs(
             await identify.identify_tracks(tracks, {sid: source}, key, on_progress=progress)
         except identify.IdentifyError as e:
             log.warning("Song identification skipped: %s", e)
+        tracks = identify.merge_same_recordings(tracks)
 
     collection = tracklist.classify_collection(title, len(tracks), uploader)
     if hint and hint.get("mixed_films") and collection["type"] == "album":

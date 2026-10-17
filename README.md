@@ -79,8 +79,12 @@ Cadence trusts the most reliable source it can find, in this order:
 | YouTube chapters | Read from the video's metadata | High |
 | Description timestamps | `00:00 Song name`, `1. Song - 3:45`, `[04:12] Song`, ranges | High |
 | Top comments | The comment with the most timestamps | Medium |
-| Audio gaps | Quiet stretches in the waveform, longest first, songs at least 90 s long | Lower, flagged for review |
+| Listening | Silences between songs, and clear changes in the music for crossfaded songs | Lower, guesses flagged for review |
 | Your own tracklist | Pasted on the review screen, or a `.cue` file | High |
+
+When Cadence listens, a cut is kept only if the two sides are different songs. Songs repeat themselves (a chorus comes back), so if music after a cut repeats music before it, it's one song and the cut is dropped. A song is never cut just for being long, and a video under 12 minutes with no silence anywhere is treated as one song. When song recognition names two neighbouring pieces as the same song, they are joined.
+
+`scripts/bench-cuts.py` measures this on any folder of songs (one song per file): it checks that each song alone stays whole, and that songs joined into jukeboxes are cut at the right places.
 
 Timestamps are whole seconds and are often a few seconds off, so every cut then moves to where one song really ends and the next begins, within ±5 s (configurable in **Settings → Audio**):
 

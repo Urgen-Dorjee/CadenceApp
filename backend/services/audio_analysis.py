@@ -4,8 +4,10 @@ Used when a video has no tracklist. Two signals, from one AudioProfile:
 
 1. Silent gaps (strong): runs of quiet 50 ms frames between songs.
 2. Music change (weaker): where the sound before a point differs most from
-   the sound after it. Only used to split segments too long to be one song,
-   which is what a crossfaded jukebox looks like.
+   the sound after it, which is how songs in a crossfaded jukebox meet.
+
+Either kind of cut is kept only if the music on its two sides isn't the same song
+(see merge_same_song). A song is never cut for being long.
 """
 
 import asyncio
@@ -20,12 +22,9 @@ from services.tracklist import make_track
 
 ANALYSIS_RATE = 8000
 MIN_TRACK_SECONDS = 90.0
-# Longer than this and a segment almost certainly holds more than one song.
-MAX_TRACK_SECONDS = 450.0
 SILENCE_DB = -38.0
 MIN_SILENCE_SECONDS = 0.4
 NOVELTY_WINDOW_SECONDS = 12.0
-MIN_NOVELTY_Z = 1.0     # enough to split a segment that's too long to be one song
 STRONG_NOVELTY_Z = 4.0  # enough to cut anywhere
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -104,7 +103,8 @@ def add_strong_changes(
 ) -> list[tuple[float, float]]:
     """Add cuts at very clear music changes, strongest first, keeping songs ≥ `min_track`.
 
-    This is what finds songs in a crossfaded jukebox, where there are no gaps.
+    This is what finds songs in a crossfaded jukebox, where there are no gaps. The caller
+    checks each one with merge_same_song.
     """
     result = list(cuts)
     for idx in np.argsort(novelty)[::-1]:
@@ -118,39 +118,6 @@ def add_strong_changes(
             continue
         result.append((round(t, 3), round(min(0.65, 0.45 + 0.04 * z), 2)))
     return sorted(result)
-
-
-def split_long_segments(
-    cuts: list[tuple[float, float]], novelty: np.ndarray, duration: float,
-    max_track: float = MAX_TRACK_SECONDS, min_track: float = MIN_TRACK_SECONDS,
-) -> list[tuple[float, float]]:
-    """Split any segment longer than `max_track` at its strongest music change.
-
-    Repeats until every segment is short enough or has no clear change left.
-    Cuts found this way get a low confidence, so the review screen flags them.
-    """
-    result = sorted(cuts)
-    changed = True
-    while changed:
-        changed = False
-        edges = [0.0] + [t for t, _ in result] + [duration]
-        for a, b in zip(edges, edges[1:]):
-            if b - a <= max_track:
-                continue
-            lo, hi = int((a + min_track) / BLOCK_S), int((b - min_track) / BLOCK_S)
-            hi = min(hi, len(novelty) - 1)
-            if hi <= lo:
-                continue
-            idx = lo + int(np.argmax(novelty[lo:hi + 1]))
-            z = float(novelty[idx])
-            if z < MIN_NOVELTY_Z:
-                continue
-            t = round((idx + 0.5) * BLOCK_S, 3)
-            result.append((t, round(min(0.65, 0.45 + 0.05 * z), 2)))
-            result.sort()
-            changed = True
-            break
-    return result
 
 
 # Jukeboxes often leave only a split second of silence between songs: too short for
@@ -281,17 +248,82 @@ def _quiet_passage(profile: AudioProfile, t: float) -> bool:
     return similarity > SAME_MUSIC_SIMILARITY
 
 
-LONG_SONG_SECONDS = 11 * 60.0  # with clear gaps between songs, pieces under this are never split
+# --- Same song on both sides of a cut? --------------------------------------------
+#
+# Songs repeat themselves: a chorus or refrain comes back. When a passage after a cut
+# plays again something heard before it, both sides are one song, however much the sound
+# changed at the cut (a chorus giving way to an instrumental break, a quiet bridge).
+# Two different songs don't share passages. Passages are compared by their chroma (which
+# notes are playing), allowing a key change of a semitone for a last chorus.
+
+PASSAGE_BLOCKS = 16        # 8 s passages...
+PASSAGE_HOP_BLOCKS = 2     # ...starting every second
+REPEAT_REACH_S = 240.0     # compared up to 4 minutes either side of the cut
+REPEAT_SIMILARITY = 0.6
+SAME_SONG_REPEAT_S = 8.0   # a stretch this long heard on both sides: one song
+CUT_EDGE_S = 3.0           # the seconds right at the cut are left out
 
 
-def _median_length(cuts: list[tuple[float, float]], duration: float) -> float:
-    edges = [0.0] + [t for t, _ in cuts] + [duration]
-    lengths = sorted(b - a for a, b in zip(edges, edges[1:]))
-    return lengths[len(lengths) // 2]
+def _passages(chroma: np.ndarray, a: int, b: int) -> np.ndarray:
+    """Normalised 8 s passages of chroma blocks a..b, one per second (rows)."""
+    starts = range(max(0, a), b - PASSAGE_BLOCKS + 1, PASSAGE_HOP_BLOCKS)
+    if len(starts) == 0:
+        return np.zeros((0, PASSAGE_BLOCKS * chroma.shape[1]))
+    rows = np.stack([chroma[i:i + PASSAGE_BLOCKS].ravel() for i in starts])
+    rows = rows - rows.mean(axis=1, keepdims=True)
+    return rows / (np.linalg.norm(rows, axis=1, keepdims=True) + 1e-9)
 
 
-def _gaps_look_like_songs(cuts: list[tuple[float, float]], duration: float) -> bool:
-    return len(cuts) >= 3 and SONG_MIN_S <= _median_length(cuts, duration) <= MAX_TRACK_SECONDS
+def _longest_diagonal(hit: np.ndarray) -> int:
+    """Longest run of True along any diagonal: the same passage playing on, on both sides."""
+    run = np.zeros(hit.shape[1] + 1, dtype=np.int32)
+    best = 0
+    for row in hit:
+        run[1:] = np.where(row, run[:-1] + 1, 0)
+        best = max(best, int(run.max()))
+    return best
+
+
+def _chroma(profile: AudioProfile) -> np.ndarray:
+    chroma = profile.features[:, -12:]
+    return chroma / (chroma.sum(axis=1, keepdims=True) + 1e-9)
+
+
+def repeated_seconds(profile: AudioProfile, t: float, lo: float, hi: float, chroma: np.ndarray | None = None) -> float:
+    """How many seconds of music after `t` (up to `hi`) repeat music before it (from `lo`)."""
+    chroma = _chroma(profile) if chroma is None else chroma
+    edge = int(CUT_EDGE_S / BLOCK_S)
+    cut = int(t / BLOCK_S)
+    before = _passages(chroma, int(max(lo, t - REPEAT_REACH_S) / BLOCK_S), cut - edge)
+    if not len(before):
+        return 0.0
+    stop = int(min(hi, t + REPEAT_REACH_S) / BLOCK_S)
+    best = 0
+    for shift in (0, 1, -1):
+        after = _passages(np.roll(chroma, shift, axis=1), cut + edge, stop)
+        if len(after):
+            best = max(best, _longest_diagonal(before @ after.T >= REPEAT_SIMILARITY))
+    return best * PASSAGE_HOP_BLOCKS * BLOCK_S
+
+
+SILENT_CUT_REPEAT_S = 12.0  # a cut in a real silence needs a longer repeat to be dropped
+
+
+def same_song_both_sides(profile: AudioProfile, t: float, silent: bool = False, chroma: np.ndarray | None = None) -> bool:
+    """True when music after `t` repeats music before it: one song, so no cut belongs there.
+
+    The comparison reaches REPEAT_REACH_S either side whatever other cuts lie in between,
+    so one wrong cut can't hide the evidence against another.
+    """
+    need = SILENT_CUT_REPEAT_S if silent else SAME_SONG_REPEAT_S
+    return repeated_seconds(profile, t, 0.0, profile.duration, chroma) >= need
+
+
+def merge_same_song(profile: AudioProfile, cuts: list[tuple[float, float]],
+                    silent: frozenset[float] = frozenset()) -> list[tuple[float, float]]:
+    """`cuts` without those that have the same song on both sides. Cuts in `silent` sit in a real silence."""
+    chroma = _chroma(profile)
+    return [(t, c) for t, c in sorted(cuts) if not same_song_both_sides(profile, t, t in silent, chroma)]
 
 
 def cuts_inside(profile: AudioProfile, start: float, end: float) -> list[tuple[float, float]]:
@@ -300,8 +332,41 @@ def cuts_inside(profile: AudioProfile, start: float, end: float) -> list[tuple[f
     return [(t, c) for t, c in edges if start + MIN_TRACK_SECONDS <= t <= end - MIN_TRACK_SECONDS]
 
 
+CHANGE_Z = 3.0              # music changes this clear are candidates (each must pass the same-song test)
+REJECTED_REACH_S = 5.0      # a change dropped as "same song" isn't tried again this close by
+ONE_SONG_MAX_S = 12 * 60.0  # a video this short with no silence anywhere is one song
+
+
+def _cuts_at_changes(profile: AudioProfile, cuts: list[tuple[float, float]], duration: float) -> list[tuple[float, float]]:
+    """Add cuts at clear music changes, keeping only those with different songs either side.
+
+    Changes are taken strongest first and keep MIN_TRACK_SECONDS apart, so a change inside
+    a song can hide a real boundary next to it. Once it is dropped, the stretch is looked
+    at again for the next strongest change.
+    """
+    silent = frozenset(t for t, _ in cuts)
+    novelty = novelty_curve(profile.features).copy()
+    reach = int(REJECTED_REACH_S / BLOCK_S)
+    for _ in range(20):
+        candidates = add_strong_changes(cuts, novelty, duration, min_z=CHANGE_Z)
+        cuts = merge_same_song(profile, candidates, silent)
+        kept = {t for t, _ in cuts}
+        dropped = [t for t, _ in candidates if t not in kept]
+        if not dropped:
+            break
+        for t in dropped:
+            i = int(t / BLOCK_S)
+            novelty[max(0, i - reach):i + reach + 1] = -np.inf
+    return cuts
+
+
 def tracks_from_profile(profile: AudioProfile, source_id: str) -> list[dict[str, Any]]:
-    """Songs found from the audio alone: silent gaps first, then music changes."""
+    """Songs found from the audio alone.
+
+    Silences between songs and clear music changes are the candidates. Every cut must then
+    pass one test: the music on its two sides must not be the same song (see
+    `merge_same_song`). A piece is never cut for being long.
+    """
     duration = profile.duration
     # Split-second silences first: they are how many jukeboxes separate songs, and they are
     # far deeper than a quiet passage inside a song. Then longer quiet gaps.
@@ -313,19 +378,12 @@ def tracks_from_profile(profile: AudioProfile, source_id: str) -> list[dict[str,
         if all(abs(t - c) >= MIN_TRACK_SECONDS for c, _ in cuts) and not _quiet_passage(profile, t):
             cuts.append((t, conf))
     cuts.sort()
-    novelty = novelty_curve(profile.features)
-    # Music changes without any silence are guesses. When the silences already divide the
-    # video into song-length pieces, use them only to split a piece that is still too long.
-    if _gaps_look_like_songs(cuts, duration):
-        # Then a long piece between two silences is most likely one long song (a qawwali, a
-        # 10-minute ghazal): only split pieces far longer than the songs around them.
-        max_track = max(LONG_SONG_SECONDS, 2.2 * _median_length(cuts, duration))
-    else:
-        cuts = add_strong_changes(cuts, novelty, duration)
-        max_track = MAX_TRACK_SECONDS
-    cuts = split_long_segments(cuts, novelty, duration, max_track=max_track)
+    if not cuts and duration <= ONE_SONG_MAX_S:
+        return [make_track(title="Track 1", start=0, end=duration, origin="silence", source_id=source_id, confidence=0.8)]
+    # Crossfaded songs meet without any silence: look for clear music changes too.
+    cuts = _cuts_at_changes(profile, cuts, duration)
     if not cuts:
-        return [make_track(title="Track 1", start=0, end=duration, origin="silence", source_id=source_id, confidence=0.3)]
+        return [make_track(title="Track 1", start=0, end=duration, origin="silence", source_id=source_id, confidence=0.5)]
     tracks = []
     edges = [(0.0, 1.0)] + cuts + [(duration, 1.0)]
     for i in range(len(edges) - 1):
