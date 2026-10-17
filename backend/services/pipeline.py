@@ -2,6 +2,7 @@
 
 analyze: resolve -> download -> find tracklist -> snap cuts  => status "review"
 export:  cut + encode + tag each approved song               => status "completed"
+video:   download the whole video (or course)                 => status "completed"
 """
 
 import asyncio
@@ -19,7 +20,7 @@ from services import (
     audio_analysis, audio_profile, cover, credits, exporter, identify, library, local_media, loudness, lyrics, name_cleanup,
     playlist,
     song_index,
-    tracklist, youtube,
+    tracklist, video, youtube,
 )
 
 log = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ _analyze_slots = _Slots(lambda: load_preferences().parallel_splits)
 _export_slots = asyncio.Semaphore(1)
 _cancel_flags: dict[str, threading.Event] = {}
 _running: dict[str, asyncio.Task] = {}
+_pause_requested: set[str] = set()
 
 
 def job_dir(job_id: str) -> str:
@@ -100,6 +102,20 @@ def start_analysis(job_id: str) -> None:
 
 def start_export(job_id: str, replace_previous: bool = False) -> None:
     _start(job_id, _export(job_id, replace_previous))
+
+
+def start_video(job_id: str) -> None:
+    _start(job_id, _video(job_id))
+
+
+def pause(job_id: str) -> bool:
+    """Stop a video download but keep what has arrived, so Resume carries on from there."""
+    flag = _cancel_flags.get(job_id)
+    if flag and job_id in _running:
+        _pause_requested.add(job_id)
+        flag.set()
+        return True
+    return False
 
 
 def cancel(job_id: str) -> bool:
@@ -353,6 +369,87 @@ async def _find_songs(
         job_id, status="review", progress=100, sources=[source], tracks=tracks, collection=collection,
         thumbnail=source["thumbnail"], message=_review_message(tracks),
     )
+
+
+PROGRESS_EVERY_S = 0.5
+
+
+async def _video(job_id: str) -> None:
+    """Download a whole video, or every video of a playlist or course, into the video folder."""
+    store = get_store()
+    job = store.get(job_id)
+    if not job:
+        return
+    loop = asyncio.get_running_loop()
+    prefs = load_preferences()
+    url, options = job["url"], job["options"]
+    playlist = youtube.link_kind(url) != "video"
+
+    def stop() -> str:
+        if not _cancelled(job_id):
+            return ""
+        return "pause" if job_id in _pause_requested else "cancel"
+
+    last = [0.0]
+
+    def on_progress(fraction: float, message: str) -> None:
+        now = time.monotonic()
+        if now - last[0] < PROGRESS_EVERY_S and fraction < 1:
+            return
+        last[0] = now
+        asyncio.run_coroutine_threadsafe(_update(job_id, progress=round(2 + 96 * fraction, 1), message=message), loop)
+
+    outputs = list(job["outputs"])
+
+    def on_saved(record: dict[str, Any]) -> None:
+        store.add_video(record)
+        outputs.append({"track_id": "", "video_id": record["video_id"], "title": record["title"], "path": record["path"]})
+        fields: dict[str, Any] = {"outputs": list(outputs)}
+        if record["thumbnail"] and not job.get("thumbnail"):
+            fields["thumbnail"] = job["thumbnail"] = record["thumbnail"]
+        if not playlist:
+            fields["title"] = record["title"]
+        asyncio.run_coroutine_threadsafe(_update(job_id, **fields), loop)
+
+    try:
+        async with _analyze_slots:
+            await _update(job_id, status="resolving", progress=1, message="Reading video details", error=None)
+            count, title = 1, job["title"]
+            known = video.remembered(youtube.video_id(url)) if not playlist else None
+            if playlist:
+                listed = await youtube.list_videos(url)
+                count, title = max(1, len(listed["entries"])), listed["title"] or title
+            elif known:
+                title = known.get("title") or title
+            _check_cancel(job_id)
+            skip = store.downloaded_video_ids() if prefs.video_skip_saved else set()
+            skip |= {o.get("video_id", "") for o in outputs}  # resuming: videos this job already saved
+            await _update(job_id, status="downloading", progress=2, message="Starting the download", title=title or url)
+            await video.download(
+                url, options, prefs.video_dir, prefs.video_layout, playlist=playlist, count=count,
+                skip_ids=skip, pause_s=prefs.video_pause_s, rate_limit_mb=prefs.video_rate_limit_mb,
+                on_progress=on_progress, on_saved=on_saved, stop=stop,
+            )
+            if not outputs:
+                if playlist and skip:
+                    await _update(job_id, status="completed", progress=100, message="Every video in this list was already saved")
+                    return
+                raise RuntimeError("The download finished, but no video file was found.")
+            folder = os.path.commonpath([os.path.dirname(o["path"]) for o in outputs])
+            n = len(outputs)
+            await _update(
+                job_id, status="completed", progress=100, outputs=outputs,
+                message=f"Saved {n} video{'s' if n != 1 else ''} to {folder}",
+            )
+    except video.Paused:
+        await _update(job_id, status="paused", message="Paused. Resume to carry on where it stopped.", outputs=outputs)
+    except youtube.Cancelled:
+        await _update(job_id, status="cancelled", message="Cancelled", progress=0, outputs=outputs)
+    except Exception as e:  # noqa: BLE001 - shown to the user, full trace in the log
+        log.exception("Video download failed for job %s", job_id)
+        await _update(job_id, status="failed", error=friendly_error(e), message="", outputs=outputs)
+    finally:
+        _pause_requested.discard(job_id)
 
 
 # Only a tracklist read from text can stop early; chapters, cue sheets and pasted lists are

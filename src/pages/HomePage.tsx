@@ -1,40 +1,100 @@
 import { DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardPaste, Loader2, Scissors, ListMusic, FolderTree, FolderOpen, Link2, FileAudio, Download } from 'lucide-react'
+import { ClipboardPaste, Loader2, Scissors, ListMusic, FolderTree, FolderOpen, Link2, FileAudio, Download, Music2, Video, Gauge, Captions, ListVideo } from 'lucide-react'
+import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { useAppStore } from '../stores/appStore'
 import { sortedJobs, useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
 import JobCard from '../components/jobs/JobCard'
+import VideoJobCard from '../components/video/VideoJobCard'
+import VideoOptionsPanel from '../components/video/VideoOptionsPanel'
+import VideoReadyDialog from '../components/video/VideoReadyDialog'
 import PlaylistDialog, { type PlaylistChoice } from '../components/PlaylistDialog'
 import { newLinks, readyToSave, youtubeLinks } from '../lib/batch'
 import { linkKind } from '../lib/playlists'
-import type { Collection } from '../types/job'
+import { isVideoJob, videoDefaults, type Collection, type VideoOptions } from '../types/job'
 
 const EMPTY_COLLECTION: Collection = { type: 'collection', name: '', artist: '', album: '', year: '' }
 
 const STEPS = [
   { icon: ListMusic, title: 'Finds every song', text: 'Uses chapters, the description or comments, and listens for gaps when there are none.' },
-  { icon: Scissors, title: 'Cuts cleanly', text: 'Each cut lands in the real gap between songs, so nothing starts or ends mid-note.' },
+  { icon: Scissors, title: 'Cuts cleanly', text: 'Each cut lands in the real gap between songs, and only where the songs differ.' },
   { icon: FolderTree, title: 'Files them for you', text: 'Singer collections go into Artists, movie albums into Albums, tagged with cover art.' },
 ]
 
-function SaveToRow() {
+const VIDEO_STEPS = [
+  { icon: Gauge, title: 'Pick quality before downloading', text: 'Each quality is shown with its file size, so a 4K documentary never fills the disk by surprise.' },
+  { icon: Captions, title: 'Subtitles and chapters come too', text: 'Captions in your languages, and chapters your player can jump between.' },
+  { icon: ListVideo, title: 'Courses stay in order', text: 'A playlist saves as numbered files in its own folder, and skips videos already saved.' },
+]
+
+type Mode = 'music' | 'video'
+
+/** The big Music | Video switch at the top of New download. */
+function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  const tab = (m: Mode, Icon: typeof Music2, title: string, text: string) => (
+    <button
+      type="button"
+      aria-pressed={mode === m}
+      onClick={() => onChange(m)}
+      className={clsx(
+        'flex items-center gap-3 px-4 py-3 rounded-md text-left transition-colors',
+        mode === m ? 'bg-raised text-ink shadow-[inset_0_0_0_1px_rgb(var(--accent))]' : 'text-muted hover:text-ink',
+      )}
+    >
+      <Icon size={20} className={mode === m ? 'text-accent' : undefined} aria-hidden="true" />
+      <span className="flex flex-col">
+        <span className="text-[14px] font-semibold">{title}</span>
+        <span className="text-xs opacity-80">{text}</span>
+      </span>
+    </button>
+  )
+  return (
+    <div role="group" aria-label="What to download" className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-sunken border border-line">
+      {tab('music', Music2, 'Music', 'Split into songs, tag and file them')}
+      {tab('video', Video, 'Video', 'Save the whole video: lectures, documentaries, talks')}
+    </div>
+  )
+}
+
+function SaveToRow({ mode }: { mode: Mode }) {
   const navigate = useNavigate()
   const prefs = usePrefsStore((s) => s.prefs)
   const update = usePrefsStore((s) => s.update)
   if (!prefs) return null
+  const video = mode === 'video'
 
   const change = async () => {
-    const folder = await window.electronAPI?.selectFolder({ defaultPath: prefs.library_dir, title: 'Save songs to' })
+    const folder = await window.electronAPI?.selectFolder({
+      defaultPath: video ? prefs.video_dir : prefs.library_dir, title: video ? 'Save videos to' : 'Save songs to',
+    })
     if (!folder) return
     try {
-      await update({ library_dir: folder, save_mode: 'library' })
-      toast.success('Songs will be saved there from now on')
+      await update(video ? { video_dir: folder } : { library_dir: folder, save_mode: 'library' })
+      toast.success(`${video ? 'Videos' : 'Songs'} will be saved there from now on`)
     } catch (e) {
       toast.error((e as Error).message)
     }
+  }
+
+  if (video) {
+    return (
+      <div className="flex items-center gap-3 px-4 h-11 border-t border-line text-xs">
+        <FolderOpen size={14} className="text-muted shrink-0" aria-hidden="true" />
+        <span className="text-muted shrink-0">Save to</span>
+        <button
+          className="flex-1 min-w-0 text-left font-mono text-[12px] truncate text-ink hover:text-accent"
+          onClick={() => window.electronAPI?.openPath(prefs.video_dir)}
+          title="Open this folder"
+        >
+          {prefs.video_dir}
+        </button>
+        <button className="btn-ghost h-7 px-2" onClick={change}>Change folder</button>
+        <button className="btn-ghost h-7 px-2" onClick={() => navigate('/settings#video')}>Options</button>
+      </div>
+    )
   }
 
   return (
@@ -72,11 +132,26 @@ export default function HomePage() {
   const typedLinks = youtubeLinks(url)
   const { ready: readyJobs, toCheck } = readyToSave(jobs)
   const prefs = usePrefsStore((s) => s.prefs)
+  const updatePrefs = usePrefsStore((s) => s.update)
+  const mode: Mode = prefs?.download_mode ?? 'music'
+  const video = mode === 'video'
+  const [videoOptions, setVideoOptions] = useState<VideoOptions | null>(null)
+  const [videoLink, setVideoLink] = useState<string | null>(null)
+  const options = videoOptions ?? (prefs ? videoDefaults(prefs) : null)
+
+  const setMode = (m: Mode) => {
+    if (m !== mode) updatePrefs({ download_mode: m }).catch((e: Error) => toast.error(e.message))
+  }
 
   const checkClipboard = useCallback(async () => {
     const text = (await window.electronAPI?.readClipboard().catch(() => ''))?.trim() ?? ''
-    setClipboardLinks(newLinks(youtubeLinks(text), Object.values(useJobsStore.getState().jobs)))
+    const kind = usePrefsStore.getState().prefs?.download_mode ?? 'music'
+    setClipboardLinks(newLinks(youtubeLinks(text), Object.values(useJobsStore.getState().jobs), kind))
   }, [])
+
+  useEffect(() => {
+    checkClipboard()
+  }, [mode, checkClipboard])
 
   useEffect(() => {
     checkClipboard()
@@ -106,10 +181,41 @@ export default function HomePage() {
     return started
   }
 
+  /** Download whole videos. One link opens "Video ready" (quality, subtitles) unless turned off in Settings. */
+  const startVideos = async (links: string[]) => {
+    if (!options || !links.length) return
+    if (links.length === 1 && prefs?.video_ask !== false) {
+      setVideoLink(links[0])
+      setUrl('')
+      setClipboardLinks([])
+      return
+    }
+    setSubmitting(true)
+    let started = 0
+    for (const link of links) {
+      try {
+        useJobsStore.getState().upsert(await api.createVideoJob(link, options))
+        started += 1
+      } catch (e) {
+        toast.error(links.length > 1 ? `${link}: ${(e as Error).message}` : (e as Error).message)
+      }
+    }
+    setSubmitting(false)
+    if (started) toast.success(started === 1 ? 'Downloading the video. Follow it in Downloads.' : `Downloading ${started} videos. Follow them in Downloads.`)
+    setUrl('')
+    setClipboardLinks([])
+  }
+
   const startLinks = async (links: string[]) => {
     if (!links.length) {
       toast.error('Paste a YouTube video or playlist link.')
       return
+    }
+    if (video) {
+      const fresh = newLinks(links, Object.values(useJobsStore.getState().jobs), 'video')
+      const skipped = links.length - fresh.length
+      if (skipped) toast(`${skipped === 1 ? 'That link is' : `${skipped} links are`} already downloading or downloaded.`)
+      return startVideos(fresh)
     }
     const fresh = newLinks(links, Object.values(useJobsStore.getState().jobs))
     const skipped = links.length - fresh.length
@@ -217,12 +323,15 @@ export default function HomePage() {
       onDrop={onDrop}
     >
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-xl font-semibold tracking-tight">New split</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight">New download</h1>
         <p className="text-muted">
-          Paste a YouTube link to a movie album, a singer collection or a playlist, or open an audio or video file from
-          your computer.
+          {video
+            ? 'Paste a link to any YouTube video, playlist or course. The whole video is saved, with subtitles and chapters.'
+            : 'Paste a YouTube link to a movie album, a singer collection or a playlist, or open an audio or video file from your computer.'}
         </p>
       </header>
+
+      <ModeSwitch mode={mode} onChange={setMode} />
 
       <section
         className={`panel overflow-hidden transition-shadow ${dragging ? 'ring-2 ring-accent border-accent' : ''}`}
@@ -230,7 +339,7 @@ export default function HomePage() {
       >
         {dragging && (
           <div className="flex items-center justify-center gap-2 h-11 bg-accent/10 text-accent text-[13px] font-medium" role="status">
-            <FileAudio size={16} aria-hidden="true" /> Drop files to split them
+            <FileAudio size={16} aria-hidden="true" /> Drop files to split them into songs
           </div>
         )}
         <form onSubmit={onSubmit} className="flex gap-2 p-4">
@@ -240,7 +349,7 @@ export default function HomePage() {
             <input
               id="url"
               className="field h-11 pl-9 text-[14px]"
-              placeholder="https://www.youtube.com/watch?v=… (paste several to split them all)"
+              placeholder={video ? 'https://www.youtube.com/watch?v=… (a video, playlist or course)' : 'https://www.youtube.com/watch?v=… (paste several to split them all)'}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               autoFocus
@@ -249,19 +358,30 @@ export default function HomePage() {
             />
           </div>
           <button type="submit" className="btn-primary h-11 px-5 text-[14px]" disabled={!ready || submitting || !url.trim()}>
-            {submitting ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Scissors size={16} aria-hidden="true" />}
-            {typedLinks.length > 1 ? `Split ${typedLinks.length} videos` : 'Split songs'}
+            {submitting ? (
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+            ) : video ? (
+              <Download size={16} aria-hidden="true" />
+            ) : (
+              <Scissors size={16} aria-hidden="true" />
+            )}
+            {video
+              ? typedLinks.length > 1 ? `Download ${typedLinks.length} videos` : 'Download video'
+              : typedLinks.length > 1 ? `Split ${typedLinks.length} videos` : 'Split songs'}
           </button>
-          <button
-            type="button"
-            className="btn-secondary h-11 px-4 text-[14px]"
-            onClick={openFiles}
-            disabled={!ready || submitting}
-            title="Split audio or video files from this computer. You can also drop them here."
-          >
-            <FileAudio size={16} aria-hidden="true" /> Open a file…
-          </button>
+          {!video && (
+            <button
+              type="button"
+              className="btn-secondary h-11 px-4 text-[14px]"
+              onClick={openFiles}
+              disabled={!ready || submitting}
+              title="Split audio or video files from this computer. You can also drop them here."
+            >
+              <FileAudio size={16} aria-hidden="true" /> Open a file…
+            </button>
+          )}
         </form>
+        {video && options && <VideoOptionsPanel value={options} onChange={setVideoOptions} />}
         {clipboardLinks.length > 0 && (
           <div className="px-4 pb-3 -mt-1">
             <button
@@ -273,23 +393,23 @@ export default function HomePage() {
               <ClipboardPaste size={13} aria-hidden="true" />
               {clipboardLinks.length === 1 ? (
                 <>
-                  <span className="shrink-0">Split the link you copied:</span>
+                  <span className="shrink-0">{video ? 'Download the link you copied:' : 'Split the link you copied:'}</span>
                   <span className="truncate font-mono text-ink">{clipboardLinks[0]}</span>
                 </>
               ) : (
-                <span className="shrink-0">Split the {clipboardLinks.length} links you copied</span>
+                <span className="shrink-0">{video ? 'Download' : 'Split'} the {clipboardLinks.length} links you copied</span>
               )}
             </button>
           </div>
         )}
-        <SaveToRow />
+        <SaveToRow mode={mode} />
       </section>
 
       {jobs.length > 0 ? (
         <section className="flex flex-col gap-2" aria-labelledby="jobs-heading">
           <div className="flex items-center justify-between min-h-8">
             <h2 id="jobs-heading" className="eyebrow">
-              Recent splits <span className="text-faint tnum font-normal ml-1">{jobs.length}</span>
+              Recent <span className="text-faint tnum font-normal ml-1">{jobs.length}</span>
             </h2>
             {readyJobs.length > 1 && (
               <button
@@ -308,14 +428,12 @@ export default function HomePage() {
             )}
           </div>
           <div className="panel divide-y divide-line overflow-hidden">
-            {jobs.map((job) => (
-              <JobCard key={job.id} job={job} />
-            ))}
+            {jobs.slice(0, 20).map((job) => (isVideoJob(job) ? <VideoJobCard key={job.id} job={job} /> : <JobCard key={job.id} job={job} showKind />))}
           </div>
         </section>
       ) : (
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3" aria-label="How it works">
-          {STEPS.map(({ icon: Icon, title, text }) => (
+          {(video ? VIDEO_STEPS : STEPS).map(({ icon: Icon, title, text }) => (
             <div key={title} className="flex flex-col gap-2 p-4 rounded-lg border border-dashed border-line">
               <Icon size={18} className="text-accent" aria-hidden="true" />
               <h3 className="font-medium">{title}</h3>
@@ -323,6 +441,18 @@ export default function HomePage() {
             </div>
           ))}
         </section>
+      )}
+      {options && prefs && (
+        <VideoReadyDialog
+          link={videoLink}
+          initial={options}
+          folder={prefs.video_dir}
+          onClose={() => setVideoLink(null)}
+          onStart={async (link, chosen) => {
+            useJobsStore.getState().upsert(await api.createVideoJob(link, chosen))
+            toast.success('Downloading. Follow it in Downloads.')
+          }}
+        />
       )}
       <PlaylistDialog
         link={playlistQueue[0] ?? null}

@@ -12,7 +12,7 @@ from core.websocket_manager import manager as ws
 from config import load_preferences
 from services import (
     audio_analysis, audio_profile, cover, duplicates, identify, local_media, musicbrainz, name_cleanup, pipeline, song_index,
-    tracklist, youtube,
+    tracklist, video, youtube,
 )
 
 router = APIRouter()
@@ -20,11 +20,41 @@ router = APIRouter()
 _YOUTUBE_RE = re.compile(r"^https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/", re.IGNORECASE)
 
 
+class VideoOptions(BaseModel):
+    """Choices for one whole-video download (starting values come from Settings)."""
+
+    quality: str = "1080"
+    container: str = "mp4"
+    subtitles: list[str] = Field(default_factory=list, max_length=10)
+    auto_subtitles: bool = True
+    subtitle_mode: str = "embed"
+    chapters: bool = True
+    thumbnail: bool = True
+    description: bool = False
+
+    @model_validator(mode="after")
+    def known_choices(self) -> "VideoOptions":
+        if self.quality not in video.QUALITIES:
+            raise ValueError("Choose a video quality from the list.")
+        if self.container not in video.CONTAINERS:
+            raise ValueError("The video file type must be MP4 or MKV.")
+        if self.subtitle_mode not in video.SUBTITLE_MODES:
+            raise ValueError("Subtitles go inside the video, in files, or both.")
+        if any(not re.fullmatch(r"[A-Za-z]{2,3}", lang) for lang in self.subtitles):
+            raise ValueError("Subtitle languages are two- or three-letter codes, like en or hi.")
+        return self
+
+
 class CreateJob(BaseModel):
-    """A YouTube link, or the full path of an audio or video file on this computer."""
+    """A YouTube link, or the full path of an audio or video file on this computer.
+
+    kind "music" splits it into songs; "video" downloads the whole video (links only).
+    """
 
     url: str = ""
     path: str = Field(default="", max_length=1000)
+    kind: Literal["music", "video"] = "music"
+    video: VideoOptions | None = None
 
     @field_validator("url")
     @classmethod
@@ -51,6 +81,8 @@ class CreateJob(BaseModel):
     def one_source(self) -> "CreateJob":
         if bool(self.url) == bool(self.path):
             raise ValueError("Paste a YouTube link or choose a file.")
+        if self.kind == "video" and not self.url:
+            raise ValueError("Paste a YouTube link to download a video.")
         return self
 
 
@@ -180,12 +212,37 @@ async def list_jobs():
     return get_store().list()
 
 
+def _video_defaults() -> VideoOptions:
+    prefs = load_preferences()
+    return VideoOptions(
+        quality=prefs.video_quality, container=prefs.video_container, subtitles=prefs.video_subtitles,
+        auto_subtitles=prefs.video_auto_subtitles, subtitle_mode=prefs.video_subtitle_mode,
+        chapters=prefs.video_chapters, thumbnail=prefs.video_thumbnail, description=prefs.video_description,
+    )
+
+
 @router.post("/jobs", status_code=201)
 async def create_job(body: CreateJob):
+    if body.kind == "video":
+        options = (body.video or _video_defaults()).model_dump()
+        job = get_store().create(body.url, kind="video", options=options)
+        await ws.send_job(job)
+        pipeline.start_video(job["id"])
+        return job
     job = get_store().create(body.url or body.path)
     await ws.send_job(job)
     pipeline.start_analysis(job["id"])
     return job
+
+
+@router.post("/video/info")
+async def video_info(body: LinkIn):
+    """What a link holds, before downloading it whole: a video's qualities (with sizes),
+    subtitles and chapters, or a playlist's videos. The details are kept for the download."""
+    try:
+        return await video.details(body.url, load_preferences().video_subtitles, get_store().downloaded_video_ids())
+    except Exception as e:  # noqa: BLE001 - yt-dlp errors are shown in plain words
+        raise HTTPException(status_code=422, detail=pipeline.friendly_error(e)) from e
 
 
 @router.get("/jobs/{job_id}")
@@ -364,15 +421,29 @@ async def reset_cover(job_id: str):
 
 @router.post("/jobs/{job_id}/retry")
 async def retry_job(job_id: str):
+    """Try a failed or cancelled job again, or resume a paused video download."""
     job = _get_job(job_id)
     if pipeline.is_running(job_id):
         raise HTTPException(status_code=409, detail="This job is already running")
-    if job["status"] not in ("failed", "cancelled"):
-        raise HTTPException(status_code=409, detail="Only failed or cancelled jobs can be retried")
-    job = get_store().update(job_id, status="queued", error=None, progress=0, message="Waiting to start")
+    if job["status"] not in ("failed", "cancelled", "paused"):
+        raise HTTPException(status_code=409, detail="Only failed, cancelled or paused jobs can be started again")
+    job = get_store().update(job_id, status="queued", error=None, message="Waiting to start")
     await ws.send_job(job)
-    pipeline.start_analysis(job_id)
+    if job["kind"] == "video":
+        pipeline.start_video(job_id)
+    else:
+        pipeline.start_analysis(job_id)
     return job
+
+
+@router.post("/jobs/{job_id}/pause")
+async def pause_job(job_id: str):
+    job = _get_job(job_id)
+    if job["kind"] != "video":
+        raise HTTPException(status_code=409, detail="Only video downloads can be paused")
+    if not pipeline.pause(job_id):
+        raise HTTPException(status_code=409, detail="Nothing is downloading for this job")
+    return {"status": "pausing"}
 
 
 @router.post("/jobs/{job_id}/cancel")
@@ -456,4 +527,15 @@ async def source_peaks(
 @router.get("/jobs/{job_id}/thumbnail")
 async def thumbnail(job_id: str):
     job = _get_job(job_id)
+    if job["kind"] == "video":
+        return _serve_video_thumbnail(job.get("thumbnail"))
     return _serve_work_file(job_id, job.get("thumbnail"))
+
+
+def _serve_video_thumbnail(path: str | None) -> FileResponse:
+    """Only thumbnails in Cadence's own video-thumbnail folder can be served."""
+    root = os.path.realpath(video.thumbs_dir())
+    real = os.path.realpath(path or "")
+    if not path or os.path.commonpath([root, real]) != root or not os.path.isfile(real):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(real)

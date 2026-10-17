@@ -203,3 +203,59 @@ async def _send(task_id: str, songs: list[dict], destination: str, layout: str, 
         "task_id": task_id, "done": len(songs), "total": len(songs), "finished": True,
         "destination": destination, "errors": errors[:5], **counts,
     })
+
+
+# --- Videos downloaded whole -------------------------------------------------------
+
+_VIDEO_ID_RE = r"^[A-Za-z0-9_-]{6,20}$"
+
+
+@router.get("/library/videos")
+async def list_videos():
+    """Downloaded videos whose files are still there, newest first."""
+    videos = await asyncio.to_thread(get_store().list_videos)
+    return [v for v in videos if os.path.isfile(v["path"])]
+
+
+@router.get("/library/videos/{video_id}/thumbnail")
+async def video_thumbnail(video_id: str):
+    import re
+
+    from services import video
+
+    if not re.fullmatch(_VIDEO_ID_RE, video_id) or not os.path.isfile(video.thumb_path(video_id)):
+        raise HTTPException(status_code=404, detail="No thumbnail")
+    return FileResponse(video.thumb_path(video_id))
+
+
+class RemoveVideoIn(BaseModel):
+    path: str = Field(min_length=1, max_length=1000)
+    # Also move the file (and its subtitle and description files) to the Recycle Bin.
+    delete_file: bool = False
+
+
+def _sidecars(path: str) -> list[str]:
+    """Subtitle and description files saved next to a video."""
+    import glob
+
+    base = os.path.splitext(path)[0]
+    found = glob.glob(glob.escape(base) + ".*.srt") + glob.glob(glob.escape(base) + ".srt")
+    return found + [p for p in (base + ".description",) if os.path.isfile(p)]
+
+
+@router.post("/library/videos/remove")
+async def remove_video(body: RemoveVideoIn):
+    from services import pipeline
+
+    store = get_store()
+    known = {v["path"] for v in await asyncio.to_thread(store.list_videos)}
+    if body.path not in known:
+        raise HTTPException(status_code=404, detail="That video isn't in the library")
+    record = await asyncio.to_thread(store.remove_video, body.path)
+    moved: list[str] = []
+    if body.delete_file:
+        files = [body.path, *_sidecars(body.path)] if os.path.isfile(body.path) else []
+        moved = await asyncio.to_thread(pipeline._trash, files)
+    if record and record.get("thumbnail") and os.path.isfile(record["thumbnail"]):
+        os.remove(record["thumbnail"])
+    return {"removed": True, "deleted": body.path in moved}

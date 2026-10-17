@@ -1,6 +1,7 @@
 """SQLite-backed job store. Jobs survive app restarts so long splits can resume."""
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -9,8 +10,9 @@ from typing import Any, Sequence
 
 from config import settings
 
-# Job lifecycle:
+# Job lifecycle (music):
 #   queued -> resolving -> downloading -> analyzing -> review -> exporting -> completed
+# Video downloads: queued -> resolving -> downloading -> completed, and can be paused.
 # Any running state can move to failed or cancelled.
 RUNNING_STATES = ("queued", "resolving", "downloading", "analyzing")
 ACTIVE_STATES = RUNNING_STATES + ("exporting",)
@@ -40,9 +42,26 @@ CREATE TABLE IF NOT EXISTS saved_videos (
     title     TEXT NOT NULL DEFAULT '',
     saved_at  REAL NOT NULL
 );
+
+-- Whole videos Cadence downloaded (the Videos tab of the library).
+CREATE TABLE IF NOT EXISTS videos (
+    path            TEXT PRIMARY KEY,
+    video_id        TEXT NOT NULL DEFAULT '',
+    title           TEXT NOT NULL DEFAULT '',
+    channel         TEXT NOT NULL DEFAULT '',
+    playlist        TEXT NOT NULL DEFAULT '',
+    playlist_index  INTEGER NOT NULL DEFAULT 0,
+    duration        REAL NOT NULL DEFAULT 0,
+    height          INTEGER NOT NULL DEFAULT 0,
+    ext             TEXT NOT NULL DEFAULT '',
+    size            INTEGER NOT NULL DEFAULT 0,
+    subtitles       TEXT NOT NULL DEFAULT '[]',
+    thumbnail       TEXT NOT NULL DEFAULT '',
+    saved_at        REAL NOT NULL
+);
 """
 
-_JSON_FIELDS = ("collection", "sources", "tracks", "outputs")
+_JSON_FIELDS = ("collection", "sources", "tracks", "outputs", "options")
 
 # Columns added after the first release, with their definitions.
 _ADDED_COLUMNS = {
@@ -52,6 +71,10 @@ _ADDED_COLUMNS = {
     "playlist": "TEXT NOT NULL DEFAULT ''",
     # Cover image the user chose for this split (in its work folder); empty means the video's.
     "cover": "TEXT NOT NULL DEFAULT ''",
+    # "music" (split into songs) or "video" (the whole video).
+    "kind": "TEXT NOT NULL DEFAULT 'music'",
+    # A video download's choices: quality, file type, subtitles, chapters...
+    "options": "TEXT NOT NULL DEFAULT '{}'",
 }
 
 
@@ -78,13 +101,14 @@ class JobStore:
             job[field] = json.loads(job[field])
         return job
 
-    def create(self, url: str) -> dict[str, Any]:
+    def create(self, url: str, kind: str = "music", options: dict[str, Any] | None = None) -> dict[str, Any]:
         now = time.time()
         job_id = uuid.uuid4().hex[:12]
         with self._lock:
             self._conn.execute(
-                "INSERT INTO jobs (id, url, status, message, created_at, updated_at) VALUES (?, ?, 'queued', 'Waiting to start', ?, ?)",
-                (job_id, url, now, now),
+                "INSERT INTO jobs (id, url, status, message, kind, options, created_at, updated_at) "
+                "VALUES (?, ?, 'queued', 'Waiting to start', ?, ?, ?, ?)",
+                (job_id, url, kind, json.dumps(options or {}), now, now),
             )
             self._conn.commit()
         return self.get(job_id)  # type: ignore[return-value]
@@ -130,6 +154,34 @@ class JobStore:
         with self._lock:
             return {row["video_id"] for row in self._conn.execute("SELECT video_id FROM saved_videos")}
 
+    def add_video(self, video: dict[str, Any]) -> None:
+        """Record a downloaded video (replacing any record of the same file)."""
+        row = {**video, "subtitles": json.dumps(video.get("subtitles") or []), "saved_at": time.time()}
+        cols = ("path", "video_id", "title", "channel", "playlist", "playlist_index", "duration", "height", "ext", "size",
+                "subtitles", "thumbnail", "saved_at")
+        with self._lock:
+            self._conn.execute(
+                f"INSERT OR REPLACE INTO videos ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                [row.get(c, "" if c in ("video_id", "title", "channel", "playlist", "ext", "thumbnail") else 0) for c in cols],
+            )
+            self._conn.commit()
+
+    def list_videos(self) -> "list[dict[str, Any]]":
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM videos ORDER BY saved_at DESC").fetchall()
+        return [{**dict(r), "subtitles": json.loads(r["subtitles"])} for r in rows]
+
+    def remove_video(self, path: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM videos WHERE path = ?", (path,)).fetchone()
+            self._conn.execute("DELETE FROM videos WHERE path = ?", (path,))
+            self._conn.commit()
+        return dict(row) if row else None
+
+    def downloaded_video_ids(self) -> set[str]:
+        """Videos downloaded whole whose file is still there."""
+        return {v["video_id"] for v in self.list_videos() if v["video_id"] and os.path.isfile(v["path"])}
+
     def delete(self, job_id: str) -> None:
         with self._lock:
             self._conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
@@ -156,8 +208,6 @@ _store: JobStore | None = None
 def get_store() -> JobStore:
     global _store
     if _store is None:
-        import os
-
         os.makedirs(settings.data_dir, exist_ok=True)
         _store = JobStore(settings.db_path)
     return _store

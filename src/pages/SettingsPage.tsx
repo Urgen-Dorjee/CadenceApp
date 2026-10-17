@@ -11,6 +11,7 @@ import { breakablePath, previewPath } from '../lib/paths'
 import { LAYOUT_PRESETS, TEMPLATE_KEY, presetIndex } from '../lib/layouts'
 import type { CollectionType, Preferences, Track } from '../types/job'
 import Switch from '../components/ui/Switch'
+import { SubtitleChips } from '../components/video/VideoOptionsPanel'
 import { fileManagerName, systemName } from '../lib/platform'
 
 const SECTIONS = [
@@ -18,6 +19,7 @@ const SECTIONS = [
   { id: 'names', label: 'Song names' },
   { id: 'claude', label: 'Tidy names' },
   { id: 'audio', label: 'Audio' },
+  { id: 'video', label: 'Video downloads' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'youtube', label: 'YouTube' },
   { id: 'updates', label: 'Updates' },
@@ -557,6 +559,92 @@ export default function SettingsPage() {
                 onChange={(e) => save({ edge_fade_ms: Number(e.target.value) })} className="w-44 accent-[rgb(var(--accent))]" />
               <span className="text-[13px] tnum w-14 text-right">{prefs.edge_fade_ms === 0 ? 'Off' : `${prefs.edge_fade_ms} ms`}</span>
             </div>
+          </Row>
+        </Section>
+
+        <Section id="video" title="Video downloads" description="Starting choices for every video. You can still change them for one video before it downloads.">
+          <Row title="Folder" hint={<span className="font-mono">{prefs.video_dir}</span>}>
+            <div className="flex gap-2">
+              <button className="btn-ghost" onClick={() => window.electronAPI?.openPath(prefs.video_dir)}>
+                <FolderOpen size={14} aria-hidden="true" /> Open
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={async () => {
+                  const folder = await window.electronAPI?.selectFolder({ defaultPath: prefs.video_dir, title: 'Save videos to' })
+                  if (folder) save({ video_dir: folder })
+                }}
+              >
+                Change folder
+              </button>
+            </div>
+          </Row>
+          <Row title="Arrange by" htmlFor="video-layout" hint={prefs.video_layout === 'channel' ? 'Videos\\Cadence\\[Channel]\\[Video].mp4. A course gets numbered files in its own folder.' : 'Every video in one folder. A course still gets its own folder.'}>
+            <select id="video-layout" className="field w-56" value={prefs.video_layout} onChange={(e) => save({ video_layout: e.target.value as Preferences['video_layout'] })}>
+              <option value="channel">A folder for each channel</option>
+              <option value="flat">One folder</option>
+            </select>
+          </Row>
+          <Row title="Quality" htmlFor="video-quality" hint="The highest it downloads. A video that has less gets its next lower quality.">
+            <select id="video-quality" className="field w-56" value={prefs.video_quality} onChange={(e) => save({ video_quality: e.target.value as Preferences['video_quality'] })}>
+              <option value="1080">1080p (recommended)</option>
+              <option value="best">Best available (up to 4K)</option>
+              <option value="2160">4K</option>
+              <option value="1440">1440p</option>
+              <option value="720">720p</option>
+              <option value="480">480p</option>
+              <option value="audio">Sound only (M4A)</option>
+            </select>
+          </Row>
+          <Row title="File type" htmlFor="video-container" hint="MP4 plays everywhere. MKV keeps every subtitle and sound track in one file.">
+            <select id="video-container" className="field w-56" value={prefs.video_container} onChange={(e) => save({ video_container: e.target.value as Preferences['video_container'] })}>
+              <option value="mp4">MP4</option>
+              <option value="mkv">MKV</option>
+            </select>
+          </Row>
+          <Row title="Show choices before each download" hint="Off: a pasted video downloads straight away with these settings." htmlFor="video-ask">
+            <Switch id="video-ask" checked={prefs.video_ask} onChange={(v) => save({ video_ask: v })} />
+          </Row>
+          <Row title="Subtitle languages" hint="Downloaded whenever the video has them." stack>
+            <SubtitleChips id="settings-add-subtitle" value={prefs.video_subtitles} onChange={(langs) => save({ video_subtitles: langs })} />
+          </Row>
+          <Row title="Use automatic captions" hint="YouTube's machine-made captions, when the uploader added none." htmlFor="video-auto-subs">
+            <Switch id="video-auto-subs" checked={prefs.video_auto_subtitles} onChange={(v) => save({ video_auto_subtitles: v })} />
+          </Row>
+          <Row title="Save subtitles" htmlFor="video-subs-mode">
+            <select id="video-subs-mode" className="field w-56" value={prefs.video_subtitle_mode} onChange={(e) => save({ video_subtitle_mode: e.target.value as Preferences['video_subtitle_mode'] })}>
+              <option value="embed">Inside the video</option>
+              <option value="srt">As separate .srt files</option>
+              <option value="both">Both</option>
+            </select>
+          </Row>
+          <Row title="Keep chapters" hint="Players can jump between the parts of a lecture or documentary." htmlFor="video-chapters">
+            <Switch id="video-chapters" checked={prefs.video_chapters} onChange={(v) => save({ video_chapters: v })} />
+          </Row>
+          <Row title="Thumbnail as cover" htmlFor="video-thumbnail">
+            <Switch id="video-thumbnail" checked={prefs.video_thumbnail} onChange={(v) => save({ video_thumbnail: v })} />
+          </Row>
+          <Row title="Description as a text file" htmlFor="video-description">
+            <Switch id="video-description" checked={prefs.video_description} onChange={(v) => save({ video_description: v })} />
+          </Row>
+          <Row title="Skip videos already saved" hint="In a playlist or course, videos already in your library are not downloaded again." htmlFor="video-skip">
+            <Switch id="video-skip" checked={prefs.video_skip_saved} onChange={(v) => save({ video_skip_saved: v })} />
+          </Row>
+          <Row title="Pause between videos" htmlFor="video-pause" hint="Keeps YouTube from asking you to prove you're not a bot when you download many videos.">
+            <select id="video-pause" className="field w-56" value={prefs.video_pause_s} onChange={(e) => save({ video_pause_s: Number(e.target.value) })}>
+              <option value={5}>5 to 10 seconds (recommended)</option>
+              <option value={30}>30 to 60 seconds</option>
+              <option value={0}>No pause</option>
+            </select>
+          </Row>
+          <Row title="Speed limit" htmlFor="video-speed" hint="Leave room for others on a shared connection.">
+            <select id="video-speed" className="field w-56" value={prefs.video_rate_limit_mb} onChange={(e) => save({ video_rate_limit_mb: Number(e.target.value) })}>
+              <option value={0}>No limit</option>
+              <option value={10}>10 MB/s</option>
+              <option value={5}>5 MB/s</option>
+              <option value={2}>2 MB/s</option>
+              <option value={1}>1 MB/s</option>
+            </select>
           </Row>
         </Section>
 

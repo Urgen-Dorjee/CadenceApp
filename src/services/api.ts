@@ -1,4 +1,4 @@
-import type { Collection, Job, Preferences, Track } from '../types/job'
+import type { Collection, Job, Preferences, Track, VideoOptions } from '../types/job'
 import type { AlbumDetails, AlbumRelease } from '../lib/albumDetails'
 import type { ListedLink } from '../lib/playlists'
 
@@ -120,6 +120,47 @@ export interface LibrarySong {
   added_at: number
 }
 
+/** A video's details before downloading it whole ("Video ready"). */
+export interface VideoDetails {
+  kind: 'video'
+  id: string
+  title: string
+  channel: string
+  duration: number
+  thumbnail: string
+  chapters: { start: number; title: string }[]
+  qualities: { id: VideoOptions['quality']; label: string; size: number }[]
+  subtitles: { lang: string; name: string; auto: boolean }[]
+  saved: boolean
+}
+
+/** A playlist or channel, before downloading its videos. */
+export interface PlaylistDetails {
+  kind: 'playlist'
+  title: string
+  count: number
+  saved_count: number
+  duration: number
+  entries: { id: string; title: string; duration: number }[]
+}
+
+/** A video in the library's Videos tab. */
+export interface LibraryVideo {
+  path: string
+  video_id: string
+  title: string
+  channel: string
+  playlist: string
+  playlist_index: number
+  duration: number
+  height: number
+  ext: string
+  size: number
+  subtitles: string[]
+  thumbnail: string
+  saved_at: number
+}
+
 export const api = {
   /** Lyrics saved with a song; with `online`, looked up on LRCLIB when none are saved. */
   songLyrics: (id: string, online: boolean) =>
@@ -130,6 +171,14 @@ export const api = {
   listJobs: () => request<Job[]>('GET', '/api/jobs'),
   /** Start a split from a YouTube link or a file on this computer. */
   createJob: (source: { url: string } | { path: string }) => request<Job>('POST', '/api/jobs', source),
+  /** Download a whole video, playlist or course. Without `video`, the choices in Settings are used. */
+  createVideoJob: (url: string, video?: VideoOptions) => request<Job>('POST', '/api/jobs', { url, kind: 'video', video }),
+  videoDetails: (url: string) => request<VideoDetails | PlaylistDetails>('POST', '/api/video/info', { url }),
+  pauseJob: (id: string) => request<{ status: string }>('POST', `/api/jobs/${id}/pause`),
+  libraryVideos: () => request<LibraryVideo[]>('GET', '/api/library/videos'),
+  removeVideo: (path: string, deleteFile: boolean) =>
+    request<{ removed: boolean; deleted: boolean }>('POST', '/api/library/videos/remove', { path, delete_file: deleteFile }),
+  videoThumbnailUrl: (videoId: string) => mediaUrl(`/api/library/videos/${encodeURIComponent(videoId)}/thumbnail`),
   saveReview: (id: string, payload: ReviewPayload) => request<Job>('PUT', `/api/jobs/${id}`, payload),
   exportJob: (id: string, payload: ReviewPayload) => request<{ status: string }>('POST', `/api/jobs/${id}/export`, payload),
   identifyJob: (id: string, payload: ReviewPayload) => request<{ tracks: Track[]; named: number }>('POST', `/api/jobs/${id}/identify`, payload),

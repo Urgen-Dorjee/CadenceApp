@@ -11,6 +11,7 @@ const LABELS: Record<JobStatus, string> = {
   completed: 'Saved',
   failed: 'Failed',
   cancelled: 'Cancelled',
+  paused: 'Paused',
 }
 
 const TONES: Record<JobStatus, string> = {
@@ -23,6 +24,7 @@ const TONES: Record<JobStatus, string> = {
   completed: 'bg-ok/15 text-ok',
   failed: 'bg-danger/15 text-danger',
   cancelled: 'bg-raised text-muted',
+  paused: 'bg-warn/15 text-warn',
 }
 
 export default function StatusPill({ status }: { status: JobStatus }) {

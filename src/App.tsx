@@ -9,6 +9,7 @@ import { useBackend } from './hooks/useBackend'
 const ReviewPage = lazy(() => import('./pages/ReviewPage'))
 const LibraryPage = lazy(() => import('./pages/LibraryPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const DownloadsPage = lazy(() => import('./pages/DownloadsPage'))
 
 function PageLoader() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ErrorBoundary fallbackTitle="Something went wrong on this page"><HomePage /></ErrorBoundary>} />
           <Route path="/jobs/:id" element={<ErrorBoundary fallbackTitle="Something went wrong while reviewing"><ReviewPage /></ErrorBoundary>} />
+          <Route path="/downloads" element={<ErrorBoundary fallbackTitle="Something went wrong in downloads"><DownloadsPage /></ErrorBoundary>} />
           <Route path="/library" element={<ErrorBoundary fallbackTitle="Something went wrong in the library"><LibraryPage /></ErrorBoundary>} />
           <Route path="/settings" element={<ErrorBoundary fallbackTitle="Something went wrong in settings"><SettingsPage /></ErrorBoundary>} />
         </Routes>

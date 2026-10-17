@@ -18,6 +18,7 @@ interface ElectronAPI {
   onSystemThemeChange: (callback: () => void) => () => void
   showItemInFolder: (target: string) => Promise<void>
   openPath: (target: string) => Promise<void>
+  openFile: (target: string) => Promise<string>
   readClipboard: () => Promise<string>
   getVersion: () => Promise<string>
   openLogs: () => Promise<void>
