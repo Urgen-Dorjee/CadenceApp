@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { ArrowLeft, FolderOpen, ListEnd, ListPlus, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Send, Shuffle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -13,6 +13,7 @@ import { formatDuration, formatTime } from '../lib/time'
 import { SongCover } from '../components/layout/PlayerBar'
 import SendDialog from '../components/library/SendDialog'
 import EditTagsDialog from '../components/library/EditTagsDialog'
+import VideoLibrary from '../components/video/VideoLibrary'
 
 type View = 'songs' | 'artists' | 'albums'
 
@@ -173,7 +174,7 @@ function GroupGrid({ groups, onOpen }: { groups: SongGroup[]; onOpen: (g: SongGr
   )
 }
 
-export default function LibraryPage() {
+function MusicLibrary({ tabs }: { tabs: ReactNode }) {
   const ready = useAppStore((s) => s.backend === 'ready')
   const completedCount = useJobsStore((s) => Object.values(s.jobs).filter((j) => j.status === 'completed').length)
   const prefs = usePrefsStore((s) => s.prefs)
@@ -252,6 +253,7 @@ export default function LibraryPage() {
   if (songs.length === 0) {
     return (
       <div className="max-w-xl mx-auto px-8 py-20 flex flex-col items-center gap-3 text-center">
+        <div className="mb-4">{tabs}</div>
         <Music2 size={32} className="text-faint" aria-hidden="true" />
         <h1 className="font-display text-lg font-semibold">Your library is empty</h1>
         <p className="text-muted">Songs you save appear here, grouped by singer and album. Songs already in your library folder are picked up too.</p>
@@ -275,6 +277,7 @@ export default function LibraryPage() {
             {plural(songs.length, 'song')} · {plural(artists.length, 'singer')} · {plural(albums.length, 'album')} · {formatDuration(totalTime)}
           </p>
         </div>
+        {tabs}
         <button
           className="btn-secondary"
           onClick={() => {
@@ -369,4 +372,33 @@ export default function LibraryPage() {
       <SendDialog songs={sending} onClose={() => setSending(null)} />
     </div>
   )
+}
+
+/** Music | Videos: the two halves of the library. */
+function LibraryTabs({ tab, onChange }: { tab: 'music' | 'videos'; onChange: (t: 'music' | 'videos') => void }) {
+  return (
+    <div className="flex rounded-lg border border-line bg-sunken p-[3px]" role="tablist" aria-label="Library sections">
+      {(['music', 'videos'] as const).map((t) => (
+        <button
+          key={t}
+          role="tab"
+          aria-selected={tab === t}
+          onClick={() => onChange(t)}
+          className={clsx(
+            'h-7 px-3 rounded-md text-[13px] capitalize transition-colors',
+            tab === t ? 'bg-raised text-ink font-semibold shadow-[inset_0_0_0_1px_rgb(var(--accent))]' : 'text-muted hover:text-ink',
+          )}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export default function LibraryPage() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'videos' ? 'videos' : 'music'
+  const tabs = <LibraryTabs tab={tab} onChange={(t) => setParams(t === 'videos' ? { tab: 'videos' } : {}, { replace: true })} />
+  return tab === 'videos' ? <VideoLibrary tabs={tabs} /> : <MusicLibrary tabs={tabs} />
 }

@@ -231,6 +231,14 @@ function registerIpcHandlers() {
     if (fs.existsSync(folder)) await shell.openPath(folder)
   })
 
+  // Open a downloaded file (a video) in its default program. Only files that exist; never creates anything.
+  ipcMain.handle('shell:openFile', async (_event, target: string) => {
+    if (typeof target !== 'string' || !path.isAbsolute(target) || !fs.existsSync(target) || !fs.statSync(target).isFile()) {
+      return 'The file is no longer there.'
+    }
+    return shell.openPath(target)
+  })
+
   ipcMain.handle('shell:openPath', async (_event, target: string) => {
     if (typeof target !== 'string') return
     fs.mkdirSync(target, { recursive: true })

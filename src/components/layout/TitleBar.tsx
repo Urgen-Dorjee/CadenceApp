@@ -8,7 +8,8 @@ function pageTitle(pathname: string, jobTitle?: string) {
   if (pathname.startsWith('/jobs/')) return jobTitle ? `Review · ${jobTitle}` : 'Review'
   if (pathname.startsWith('/library')) return 'Library'
   if (pathname.startsWith('/settings')) return 'Settings'
-  return 'New split'
+  if (pathname.startsWith('/downloads')) return 'Downloads'
+  return 'New download'
 }
 
 /** Custom title bar. Windows and Linux draw min/max/close on the right (titleBarOverlay); macOS its traffic lights on the left. */

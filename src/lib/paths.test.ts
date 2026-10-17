@@ -32,6 +32,21 @@ const prefs: Preferences = {
   album_template: 'Albums/{album}{year_suffix}/{track:02} - {title}',
   collection_template: 'Collections/{collection}/{track:02} - {title}',
   single_template: 'Singles/{title}',
+  video_dir: 'C:\\Users\\me\\Videos\\Cadence',
+  video_quality: '1080',
+  video_container: 'mp4',
+  video_subtitles: ['en'],
+  video_auto_subtitles: true,
+  video_subtitle_mode: 'embed',
+  video_chapters: true,
+  video_thumbnail: true,
+  video_description: false,
+  video_layout: 'channel',
+  video_skip_saved: true,
+  video_pause_s: 5,
+  video_rate_limit_mb: 0,
+  video_ask: true,
+  download_mode: 'music',
 }
 
 const song: Track = { id: '1', title: 'Pehla Nasha', artist: '', start: 0, end: 1, source_id: 's', origin: 'chapters', confidence: 1, include: true }

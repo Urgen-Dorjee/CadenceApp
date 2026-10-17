@@ -6,6 +6,7 @@ import { api } from '../../services/api'
 import { isRunning, type Job } from '../../types/job'
 import StatusPill from '../ui/StatusPill'
 import ProgressBar from '../ui/ProgressBar'
+import { KindBadge } from '../video/VideoJobCard'
 
 const TYPE_LABEL: Record<string, string> = {
   artist: 'Singer collection',
@@ -33,7 +34,7 @@ export function Thumbnail({ job, className }: { job: Job; className: string }) {
   )
 }
 
-export default function JobCard({ job }: { job: Job }) {
+export default function JobCard({ job, showKind = false }: { job: Job; showKind?: boolean }) {
   const navigate = useNavigate()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const running = isRunning(job)
@@ -50,6 +51,7 @@ export default function JobCard({ job }: { job: Job }) {
 
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2 min-w-0">
+          {showKind && <KindBadge kind="music" />}
           <h3 className="font-medium truncate" title={job.title || job.url}>
             {job.title || job.url}
           </h3>

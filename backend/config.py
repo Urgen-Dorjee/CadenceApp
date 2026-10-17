@@ -28,6 +28,10 @@ def _default_library_dir() -> str:
     return str(Path.home() / "Music" / APP_NAME)
 
 
+def _default_video_dir() -> str:
+    return str(Path.home() / "Videos" / APP_NAME)
+
+
 class Settings(BaseSettings):
     """Process-level settings, set by Electron through environment variables."""
 
@@ -119,6 +123,27 @@ class Preferences(BaseModel):
     album_template: str = "Albums/{album}{year_suffix}/{track:02} - {title}"
     collection_template: str = "Collections/{collection}/{track:02} - {title}"
     single_template: str = "Singles/{title}"
+    # Whole-video downloads (the Video side of New download). These are the starting
+    # choices; each download can change them before it starts.
+    video_dir: str = _default_video_dir()
+    # "best", "2160", "1440", "1080", "720", "480" or "audio" (sound only, M4A).
+    video_quality: str = "1080"
+    video_container: str = "mp4"   # "mp4" or "mkv"
+    video_subtitles: list[str] = ["en"]
+    video_auto_subtitles: bool = True
+    video_subtitle_mode: str = "embed"   # "embed" (inside the video), "srt" (files) or "both"
+    video_chapters: bool = True
+    video_thumbnail: bool = True
+    video_description: bool = False
+    video_layout: str = "channel"   # "channel" folders or "flat" (one folder)
+    video_skip_saved: bool = True
+    # Pause between videos of a playlist, in seconds (it waits this to twice this). 0 = none.
+    video_pause_s: int = 5
+    video_rate_limit_mb: float = 0.0   # MB/s, 0 = no limit
+    # Show the "Video ready" screen (quality, subtitles) before each download.
+    video_ask: bool = True
+    # Last side chosen on New download: "music" or "video".
+    download_mode: str = "music"
     # The welcome screen was completed (or skipped because Cadence was already in use).
     onboarded: bool = False
     version: int = PREFS_VERSION

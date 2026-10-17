@@ -12,9 +12,16 @@ export function youtubeLinks(text: string): string[] {
   return [...new Set(links)]
 }
 
-/** Links not already in the list of splits (failed or cancelled ones may be tried again). */
-export function newLinks(links: string[], jobs: Job[]): string[] {
-  const known = new Set(jobs.filter((j) => j.status !== 'failed' && j.status !== 'cancelled').map((j) => j.url))
+/**
+ * Links not already in the list (failed or cancelled ones may be tried again). A link split
+ * into songs can still be downloaded as a video, and the other way round.
+ */
+export function newLinks(links: string[], jobs: Job[], kind: 'music' | 'video' = 'music'): string[] {
+  const known = new Set(
+    jobs
+      .filter((j) => j.status !== 'failed' && j.status !== 'cancelled' && (j.kind ?? 'music') === kind)
+      .map((j) => j.url),
+  )
   return links.filter((l) => !known.has(l))
 }
 
@@ -25,7 +32,7 @@ export function newLinks(links: string[], jobs: Job[]): string[] {
  */
 export function readyToSave(jobs: Job[]): { ready: Job[]; toCheck: Job[] } {
   const reviewed = jobs.filter(
-    (j) => j.status === 'review' && j.tracks.some((t) => t.include) && j.sources.every((s) => s.path),
+    (j) => j.kind !== 'video' && j.status === 'review' && j.tracks.some((t) => t.include) && j.sources.every((s) => s.path),
   )
   return {
     ready: reviewed.filter((j) => !j.tracks.some(needsCheck)),

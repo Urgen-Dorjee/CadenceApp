@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from config import AUDIO_FORMATS, Preferences, load_preferences, save_preferences, settings
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
-from services import identify, pipeline
+from services import identify, pipeline, video
 from core.ffmpeg_utils import is_ffmpeg_available
 from core import ytdlp_updates
 
@@ -32,6 +32,27 @@ async def health():
 @router.get("/preferences")
 async def get_preferences():
     return load_preferences()
+
+
+def _check_video_prefs(prefs: Preferences) -> None:
+    if not os.path.isabs(prefs.video_dir):
+        raise HTTPException(status_code=422, detail="Video folder must be a full path")
+    if prefs.video_quality not in video.QUALITIES:
+        raise HTTPException(status_code=422, detail="Choose a video quality from the list")
+    if prefs.video_container not in video.CONTAINERS:
+        raise HTTPException(status_code=422, detail="Video file type must be MP4 or MKV")
+    if prefs.video_subtitle_mode not in video.SUBTITLE_MODES:
+        raise HTTPException(status_code=422, detail="Subtitles must go inside the video, in files, or both")
+    if prefs.video_layout not in video.LAYOUTS:
+        raise HTTPException(status_code=422, detail="Videos can be arranged by channel or in one folder")
+    if len(prefs.video_subtitles) > 10 or any(not re.fullmatch(r"[A-Za-z]{2,3}", lang) for lang in prefs.video_subtitles):
+        raise HTTPException(status_code=422, detail="Subtitle languages are two- or three-letter codes, like en or hi")
+    if not 0 <= prefs.video_pause_s <= 120:
+        raise HTTPException(status_code=422, detail="The pause between videos must be 0 to 120 seconds")
+    if not 0 <= prefs.video_rate_limit_mb <= 1000:
+        raise HTTPException(status_code=422, detail="The speed limit must be 0 (none) to 1000 MB/s")
+    if prefs.download_mode not in ("music", "video"):
+        raise HTTPException(status_code=422, detail="Download mode must be music or video")
 
 
 @router.put("/preferences")
@@ -64,6 +85,7 @@ async def update_preferences(prefs: Preferences):
         raise HTTPException(status_code=422, detail="Save mode must be library or ask")
     if not os.path.isabs(prefs.library_dir):
         raise HTTPException(status_code=422, detail="Library folder must be a full path")
+    _check_video_prefs(prefs)
     save_preferences(prefs)
     await pipeline.analyze_limit_changed()
     return prefs

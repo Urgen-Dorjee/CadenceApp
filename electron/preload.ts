@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   showItemInFolder: (target: string) => ipcRenderer.invoke('shell:showItemInFolder', target),
   openPath: (target: string) => ipcRenderer.invoke('shell:openPath', target),
+  /** Open a file in its default program. Resolves to '' on success, or an error message. */
+  openFile: (target: string) => ipcRenderer.invoke('shell:openFile', target),
   readClipboard: () => ipcRenderer.invoke('clipboard:readText'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   openLogs: () => ipcRenderer.invoke('app:openLogs'),

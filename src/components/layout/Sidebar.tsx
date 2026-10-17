@@ -1,16 +1,19 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Plus, Library, Settings, FolderOpen, HardDrive } from 'lucide-react'
+import { Plus, Library, Settings, FolderOpen, HardDrive, Download, Video } from 'lucide-react'
 import { clsx } from 'clsx'
 import { sortedJobs, useJobsStore } from '../../stores/jobsStore'
 import { formatBytes, shortPath, usePrefsStore } from '../../stores/prefsStore'
 import { isRunning } from '../../types/job'
 
 const mainNav = [
-  { to: '/', icon: Plus, label: 'New split', end: true },
+  { to: '/', icon: Plus, label: 'New download', end: true },
+  { to: '/downloads', icon: Download, label: 'Downloads', end: false },
   { to: '/library', icon: Library, label: 'Library', end: false },
 ]
 
-function NavItem({ to, icon: Icon, label, end, badge }: { to: string; icon: typeof Plus; label: string; end: boolean; badge?: number }) {
+function NavItem({ to, icon: Icon, label, end, badge, badgeTitle, badgeTone = 'warn' }: {
+  to: string; icon: typeof Plus; label: string; end: boolean; badge?: number; badgeTitle?: string; badgeTone?: 'warn' | 'accent'
+}) {
   return (
     <NavLink
       to={to}
@@ -27,7 +30,13 @@ function NavItem({ to, icon: Icon, label, end, badge }: { to: string; icon: type
           <Icon size={15} className={isActive ? 'text-accent' : undefined} aria-hidden="true" />
           <span className="flex-1">{label}</span>
           {!!badge && (
-            <span className="min-w-5 h-5 px-1.5 rounded-full bg-warn/15 text-warn text-[11px] font-semibold flex items-center justify-center tnum" title={`${badge} ready to review`}>
+            <span
+              className={clsx(
+                'min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold flex items-center justify-center tnum',
+                badgeTone === 'warn' ? 'bg-warn/15 text-warn' : 'bg-accent/15 text-accent',
+              )}
+              title={badgeTitle}
+            >
               {badge}
             </span>
           )}
@@ -43,14 +52,21 @@ export default function Sidebar() {
   const prefs = usePrefsStore((s) => s.prefs)
   const storage = usePrefsStore((s) => s.storage)
   const reviewCount = Object.values(jobs).filter((j) => j.status === 'review').length
-  const running = sortedJobs(jobs).filter(isRunning).slice(0, 4)
+  const runningAll = sortedJobs(jobs).filter(isRunning)
+  const running = runningAll.slice(0, 4)
   const askEachTime = prefs?.save_mode === 'ask'
 
   return (
     <aside className="w-60 shrink-0 bg-chrome flex flex-col gap-4 px-3 pb-3" aria-label="Main navigation">
       <nav className="flex flex-col gap-0.5">
         {mainNav.map((item) => (
-          <NavItem key={item.to} {...item} badge={item.to === '/' ? reviewCount : undefined} />
+          <NavItem
+            key={item.to}
+            {...item}
+            badge={item.to === '/' ? reviewCount : item.to === '/downloads' ? runningAll.length : undefined}
+            badgeTitle={item.to === '/' ? `${reviewCount} ready to review` : `${runningAll.length} in progress`}
+            badgeTone={item.to === '/downloads' ? 'accent' : 'warn'}
+          />
         ))}
       </nav>
 
@@ -60,7 +76,7 @@ export default function Sidebar() {
           {running.map((job) => (
             <button
               key={job.id}
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/downloads')}
               className="no-drag text-left px-2.5 py-1.5 rounded-md hover:bg-raised/60 flex flex-col gap-1"
             >
               <span className="text-xs truncate">{job.title || 'Reading video…'}</span>
@@ -75,7 +91,7 @@ export default function Sidebar() {
       <div className="flex-1" />
 
       {prefs && (
-        <section className="rounded-lg border border-line bg-surface p-3 flex flex-col gap-2" aria-label="Where songs are saved">
+        <section className="rounded-lg border border-line bg-surface p-3 flex flex-col gap-2" aria-label="Where songs and videos are saved">
           <div className="flex items-center justify-between">
             <h2 className="eyebrow">Saving to</h2>
             <button className="no-drag text-[11px] text-accent hover:underline" onClick={() => navigate('/settings#saving')}>
@@ -94,6 +110,15 @@ export default function Sidebar() {
               <span className="truncate font-mono text-[11.5px] group-hover:text-ink text-muted">{shortPath(prefs.library_dir)}</span>
             </button>
           )}
+          <button
+            className="no-drag flex items-center gap-2 text-left text-xs min-w-0 group"
+            onClick={() => window.electronAPI?.openPath(prefs.video_dir)}
+            title={`Videos: ${prefs.video_dir}
+Click to open`}
+          >
+            <Video size={14} className="text-muted group-hover:text-accent shrink-0" aria-hidden="true" />
+            <span className="truncate font-mono text-[11.5px] group-hover:text-ink text-muted">{shortPath(prefs.video_dir)}</span>
+          </button>
           {storage && (
             <p className="flex items-center gap-2 text-[11px] text-faint tnum">
               <HardDrive size={12} aria-hidden="true" />

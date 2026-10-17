@@ -8,6 +8,8 @@ export type JobStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  /** A video download stopped by the user; Resume carries on where it stopped. */
+  | 'paused'
 
 export type TrackOrigin = 'chapters' | 'description' | 'comment' | 'silence' | 'playlist' | 'single' | 'manual' | 'pasted' | 'cue'
 
@@ -51,6 +53,22 @@ export interface Output {
   track_id: string
   title: string
   path: string
+  /** Video downloads: the YouTube id of the saved video. */
+  video_id?: string
+}
+
+export type VideoQuality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | 'audio'
+
+/** Choices for one whole-video download. */
+export interface VideoOptions {
+  quality: VideoQuality
+  container: 'mp4' | 'mkv'
+  subtitles: string[]
+  auto_subtitles: boolean
+  subtitle_mode: 'embed' | 'srt' | 'both'
+  chapters: boolean
+  thumbnail: boolean
+  description: boolean
 }
 
 export interface Job {
@@ -71,6 +89,10 @@ export interface Job {
   playlist?: string
   /** Cover image the user chose for this split; empty means the video's thumbnail. */
   cover?: string
+  /** "music": split into songs. "video": the whole video downloaded. */
+  kind?: 'music' | 'video'
+  /** A video download's choices. */
+  options?: Partial<VideoOptions>
   created_at: number
   updated_at: number
 }
@@ -109,6 +131,41 @@ export interface Preferences {
   album_template: string
   collection_template: string
   single_template: string
+  video_dir: string
+  video_quality: VideoQuality
+  video_container: 'mp4' | 'mkv'
+  video_subtitles: string[]
+  video_auto_subtitles: boolean
+  video_subtitle_mode: 'embed' | 'srt' | 'both'
+  video_chapters: boolean
+  video_thumbnail: boolean
+  video_description: boolean
+  video_layout: 'channel' | 'flat'
+  video_skip_saved: boolean
+  /** Pause between videos of a playlist (it waits this to twice this), 0 = none. */
+  video_pause_s: number
+  video_rate_limit_mb: number
+  /** Show the "Video ready" screen before each download. */
+  video_ask: boolean
+  download_mode: 'music' | 'video'
+}
+
+/** The starting choices for a video download, from Settings. */
+export function videoDefaults(prefs: Preferences): VideoOptions {
+  return {
+    quality: prefs.video_quality,
+    container: prefs.video_container,
+    subtitles: prefs.video_subtitles,
+    auto_subtitles: prefs.video_auto_subtitles,
+    subtitle_mode: prefs.video_subtitle_mode,
+    chapters: prefs.video_chapters,
+    thumbnail: prefs.video_thumbnail,
+    description: prefs.video_description,
+  }
+}
+
+export function isVideoJob(job: Pick<Job, 'kind'>): boolean {
+  return job.kind === 'video'
 }
 
 export const RUNNING_STATUSES: JobStatus[] = ['queued', 'resolving', 'downloading', 'analyzing', 'exporting']

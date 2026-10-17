@@ -37,6 +37,7 @@ xattr -cr /Applications/Cadence.app
 - [How it finds the songs](#how-it-finds-the-songs)
 - [Naming songs](#naming-songs)
 - [Where songs go](#where-songs-go)
+- [Video downloads](#video-downloads)
 - [Library](#library)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
@@ -52,6 +53,7 @@ xattr -cr /Applications/Cadence.app
 
 ## Features
 
+- **Music or video.** New download has a **Music | Video** switch. Music splits a video into tagged songs; Video saves the whole video (lectures, documentaries, talks, courses) with subtitles and chapters.
 - **One link in, an album out.** Works with single videos (jukeboxes, full albums, mixes) and playlists.
 - **Many at once.** Paste several links or drop several files; they're split two at a time (1–4, in Settings). **Save all ready** saves every split whose cuts all look right and leaves the ones with cuts to check for you.
 - **Whole playlists and channels.** Paste a playlist or channel link and choose: **Split each video** (a playlist of jukeboxes or full albums), **One album** (each video is one song) or **Just this video**. Cadence lists the videos with their length, can show only those of 20 minutes or more, and marks the ones already in your list or saved before so nothing is downloaded twice.
@@ -167,6 +169,20 @@ Saving options (**Settings → Saving songs**):
 - **Disk space:** keep or delete downloaded audio after saving, and see and clear what's kept.
 
 Cadence never overwrites a file it didn't save. A clash becomes `Song (2).mp3`. When you save a split again, you can **replace** the songs it saved last time (anything no longer in the split goes to the Recycle Bin) or **keep both**.
+
+## Video downloads
+
+Switch **New download** to **Video** to save whole videos instead of songs.
+
+- **Choose before downloading.** "Video ready" shows each quality the video has with its file size (4K, 1440p, 1080p, 720p, 480p, or sound only as M4A), its subtitles and its chapters. A video that doesn't have the chosen quality gets the next lower one. Turn the screen off in Settings to download straight away.
+- **MP4 or MKV.** MP4 prefers H.264 and AAC, which play on every phone, TV and computer. MKV takes the best formats and keeps every track.
+- **Subtitles** in your languages, inside the video, as .srt files or both, with YouTube's automatic captions when the uploader added none. One track per language.
+- **Chapters, thumbnail and description** are kept with the video.
+- **Playlists and courses** save in order as numbered files in their own folder, skip videos already saved, and pause 5–10 s between videos so YouTube doesn't block downloads.
+- **Pause and resume.** A paused download carries on from where it stopped. Cancel removes the unfinished file.
+- **Downloads** lists music splits and videos together; the **Library** has a **Videos** tab with search and filters for courses and subtitles.
+
+Videos go to `Videos\Cadence\<Channel>\` by default (Settings → Video downloads), with a speed limit if you share the connection.
 
 ## Library
 
