@@ -142,6 +142,29 @@ def lookup(api_key: str, duration: int, fp: str) -> dict[str, Any] | None:
     return parse_lookup(data)
 
 
+def merge_same_recordings(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Join neighbouring pieces Cadence cut by listening that AcoustID names as the same song.
+
+    Two halves of one song cut apart by mistake are both recognised as that song. Only
+    cuts found by listening are joined; a tracklist's songs are left as they are.
+    """
+    def same(a: dict[str, Any], b: dict[str, Any]) -> bool:
+        return (
+            a["origin"] == b["origin"] == "silence" and "match" in a and "match" in b
+            and a["source_id"] == b["source_id"] and abs(a["end"] - b["start"]) < 0.5
+            and a["title"].casefold() == b["title"].casefold()
+            and a.get("artist", "").casefold() == b.get("artist", "").casefold()
+        )
+
+    result: list[dict[str, Any]] = []
+    for track in tracks:
+        if result and same(result[-1], track):
+            result[-1] = {**result[-1], "end": track["end"], "confidence": max(result[-1]["confidence"], track["confidence"])}
+        else:
+            result.append(track)
+    return result
+
+
 async def identify_tracks(
     tracks: list[dict[str, Any]],
     sources: dict[str, dict[str, Any]],
