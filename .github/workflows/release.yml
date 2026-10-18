@@ -219,7 +219,7 @@ jobs:
       # Proof that each installer was built by this workflow from this commit:
       #   gh attestation verify <file> --repo Urgen-Dorjee/CadenceApp
       - name: Attest where the installers come from
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/*.exe
