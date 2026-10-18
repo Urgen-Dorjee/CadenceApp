@@ -10,6 +10,8 @@ import { usePrefsStore } from '../../stores/prefsStore'
 import { formatDuration } from '../../lib/time'
 import { formatSize, languageName } from '../../lib/video'
 import { trashName } from '../../lib/platform'
+import { isWatched, watchedFraction } from '../../lib/videoPlayer'
+import { useVideoPlayer } from '../../stores/videoPlayerStore'
 
 type Filter = 'all' | 'courses' | 'subtitles'
 
@@ -34,10 +36,15 @@ function Thumb({ video }: { video: LibraryVideo }) {
 
 function VideoCard({ video, onRemove }: { video: LibraryVideo; onRemove: (v: LibraryVideo, deleteFile: boolean) => void }) {
   const [confirm, setConfirm] = useState(false)
+  const openPlayer = useVideoPlayer((s) => s.open)
+  const audioOnly = !video.height
+  // Videos play in Cadence's own player; sound-only files in the system's.
   const play = async () => {
+    if (!audioOnly) return openPlayer(video.path)
     const problem = await window.electronAPI?.openFile(video.path)
     if (problem) toast.error(problem)
   }
+  const watched = watchedFraction(video.position, video.duration)
   const meta = [video.playlist ? `${video.playlist} · ${video.playlist_index}` : video.channel, video.subtitles.length ? `CC ${video.subtitles.map(languageName).join(', ')}` : '']
     .filter(Boolean)
     .join(' · ')
@@ -57,7 +64,12 @@ function VideoCard({ video, onRemove }: { video: LibraryVideo; onRemove: (v: Lib
         <span className="absolute left-2 top-2 h-[18px] px-1.5 rounded bg-black/70 text-[10.5px] font-bold text-white flex items-center">{resolution(video)}</span>
         {video.duration > 0 && (
           <span className="absolute right-2 bottom-2 h-[18px] px-1.5 rounded bg-black/75 text-[11px] font-semibold text-white flex items-center tnum">
-            {formatDuration(video.duration)}
+            {isWatched(video.position, video.duration) ? 'Watched' : formatDuration(video.duration)}
+          </span>
+        )}
+        {watched > 0 && (
+          <span className="absolute inset-x-0 bottom-0 h-1 bg-white/30" aria-label={`${Math.round(watched * 100)}% watched`}>
+            <span className="block h-full bg-accent" style={{ width: `${watched * 100}%` }} />
           </span>
         )}
       </button>

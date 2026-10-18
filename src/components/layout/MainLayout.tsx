@@ -6,6 +6,7 @@ import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import PlayerBar from './PlayerBar'
 import NowPlaying from '../player/NowPlaying'
+import VideoPlayer from '../video/VideoPlayer'
 import { usePlayerShortcuts } from '../../hooks/usePlayerShortcuts'
 import WelcomeDialog from './WelcomeDialog'
 import UpdateOverlay from './UpdateOverlay'
@@ -149,6 +150,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       <PlayerBar />
       <StatusBar />
       <Welcome />
+      <VideoPlayer />
       <UpdateOverlay />
     </div>
   )

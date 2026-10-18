@@ -160,6 +160,18 @@ export interface LibraryVideo {
   subtitles: string[]
   thumbnail: string
   saved_at: number
+  /** Names the video in the player's URLs. */
+  key: string
+  /** Where it was left off in the player, in seconds (0 if never played). */
+  position: number
+}
+
+/** What the built-in player shows besides the picture. */
+export interface PlayerDetails {
+  duration: number
+  chapters: { start: number; end: number; title: string }[]
+  /** `source`: "file" for an .srt saved next to the video, "video" for one inside it. */
+  subtitles: { id: string; lang: string; source: 'file' | 'video' }[]
 }
 
 export const api = {
@@ -179,6 +191,16 @@ export const api = {
   libraryVideos: () => request<LibraryVideo[]>('GET', '/api/library/videos'),
   removeVideo: (path: string, deleteFile: boolean) =>
     request<{ removed: boolean; deleted: boolean }>('POST', '/api/library/videos/remove', { path, delete_file: deleteFile }),
+  videoFileUrl: (key: string) => mediaUrl(`/api/library/videos/${key}/file`),
+  playerDetails: (key: string) => request<PlayerDetails>('GET', `/api/library/videos/${key}/details`),
+  /** WebVTT text of one subtitle track. */
+  playerSubtitles: async (key: string, trackId: string) => {
+    const res = await fetch(mediaUrl(`/api/library/videos/${key}/subtitles/${encodeURIComponent(trackId)}`))
+    if (!res.ok) throw new ApiError(`Couldn't load the subtitles (${res.status})`, res.status)
+    return res.text()
+  },
+  saveVideoProgress: (key: string, position: number, duration: number) =>
+    request<{ saved: boolean }>('PUT', `/api/library/videos/${key}/progress`, { position, duration }),
   videoThumbnailUrl: (videoId: string) => mediaUrl(`/api/library/videos/${encodeURIComponent(videoId)}/thumbnail`),
   saveReview: (id: string, payload: ReviewPayload) => request<Job>('PUT', `/api/jobs/${id}`, payload),
   exportJob: (id: string, payload: ReviewPayload) => request<{ status: string }>('POST', `/api/jobs/${id}/export`, payload),

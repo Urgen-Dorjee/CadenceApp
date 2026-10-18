@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import re
+import subprocess
 import uuid
 from typing import Literal
 
@@ -212,9 +214,68 @@ _VIDEO_ID_RE = r"^[A-Za-z0-9_-]{6,20}$"
 
 @router.get("/library/videos")
 async def list_videos():
-    """Downloaded videos whose files are still there, newest first."""
+    """Downloaded videos whose files are still there, newest first. `key` names a video in
+    the player's URLs; `position` is where it was left off."""
+    from services import video_player
+
     videos = await asyncio.to_thread(get_store().list_videos)
-    return [v for v in videos if os.path.isfile(v["path"])]
+    return [{**v, "key": video_player.key_of(v["path"])} for v in videos if os.path.isfile(v["path"])]
+
+
+async def _video_by_key(key: str) -> dict:
+    """The library video with this key, if its file is still there. Only these can be played."""
+    from services import video_player
+
+    if not re.fullmatch(r"[0-9a-f]{16}", key):
+        raise HTTPException(status_code=404, detail="No such video")
+    for v in await asyncio.to_thread(get_store().list_videos):
+        if video_player.key_of(v["path"]) == key and os.path.isfile(v["path"]):
+            return v
+    raise HTTPException(status_code=404, detail="That video is no longer there")
+
+
+@router.get("/library/videos/{key}/file")
+async def video_file(key: str):
+    """The video itself, for the built-in player (seeking works through Range requests)."""
+    video = await _video_by_key(key)
+    return FileResponse(video["path"])
+
+
+@router.get("/library/videos/{key}/details")
+async def video_details(key: str):
+    """Chapters and subtitle tracks of a downloaded video, for the player."""
+    from services import video_player
+
+    video = await _video_by_key(key)
+    try:
+        return await asyncio.to_thread(video_player.probe, video["path"])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {"duration": video.get("duration") or 0, "chapters": [], "subtitles": []}
+
+
+@router.get("/library/videos/{key}/subtitles/{track_id}")
+async def video_subtitles(key: str, track_id: str):
+    """One subtitle track as WebVTT, which the player shows."""
+    from services import video_player
+
+    video = await _video_by_key(key)
+    text = await asyncio.to_thread(video_player.subtitle_vtt, video["path"], track_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="No such subtitles")
+    return Response(text, media_type="text/vtt; charset=utf-8")
+
+
+class VideoProgressIn(BaseModel):
+    position: float = Field(ge=0, le=10 * 24 * 3600)
+    duration: float = Field(ge=0, le=10 * 24 * 3600)
+
+
+@router.put("/library/videos/{key}/progress")
+async def video_progress(key: str, body: VideoProgressIn):
+    """Remember where a video was left off."""
+    video = await _video_by_key(key)
+    await asyncio.to_thread(get_store().set_video_progress, video["path"], body.position, body.duration)
+    return {"saved": True}
 
 
 @router.get("/library/videos/{video_id}/thumbnail")
