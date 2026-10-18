@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from config import AUDIO_FORMATS, Preferences, load_preferences, save_preferences, settings
 from core.db import ACTIVE_STATES, get_store
@@ -174,3 +174,29 @@ async def clear_downloads():
             await ws.send_job(updated)
         cleared += 1
     return {"freed_bytes": freed, "jobs_cleared": cleared}
+
+
+@router.get("/diagnostics")
+async def diagnostics(request: Request):
+    """A report to paste into a bug report: versions, tools, counts, settings (without keys)
+    and the end of the log, with the home folder hidden."""
+    from services import diagnostics as diag
+
+    return {"text": await asyncio.to_thread(diag.report, request.app.version)}
+
+
+@router.get("/backups")
+async def list_backups():
+    """The database copies kept in the data folder, newest first, and that folder."""
+    from core import backup
+
+    return {"folder": backup.backups_dir(settings.data_dir), "backups": await asyncio.to_thread(backup.list_backups, settings.data_dir)}
+
+
+@router.post("/backups")
+async def backup_now():
+    """Make a copy of the database and settings now."""
+    from core import backup
+
+    path = await asyncio.to_thread(backup.backup_now, settings.db_path, settings.prefs_path, settings.data_dir, "manual")
+    return {"name": os.path.basename(path)}

@@ -17,6 +17,7 @@ from core import ytdlp_updates
 # Before anything imports yt_dlp: use a newer yt-dlp from the data folder if there is one.
 ytdlp_updates.activate(settings.data_dir)
 
+from core import backup  # noqa: E402
 from core.db import get_store  # noqa: E402 - after activating the newer yt-dlp
 from core.websocket_manager import manager as ws_manager  # noqa: E402
 from routers import jobs, library, system  # noqa: E402
@@ -50,6 +51,11 @@ install_log_redaction()
 async def lifespan(app: FastAPI):
     os.makedirs(settings.work_dir, exist_ok=True)
     get_store().recover_interrupted()
+    # A copy of the database and settings once a day (the newest week is kept).
+    try:
+        await asyncio.to_thread(backup.daily_backup, settings.db_path, settings.prefs_path, settings.data_dir)
+    except Exception as e:  # noqa: BLE001 - a failed backup mustn't stop Cadence starting
+        logging.getLogger(__name__).warning("Daily backup failed: %s", e)
     print(f"[Backend] Starting on 127.0.0.1:{settings.backend_port}")
     # Pick up songs added, changed or deleted while the app was closed.
     scan_task = asyncio.create_task(library.scan_library())

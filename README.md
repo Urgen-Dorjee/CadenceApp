@@ -375,6 +375,7 @@ Unsigned installers work, but Windows SmartScreen shows "Windows protected your 
 | Jobs database | `<data folder>/cadence.db` |
 | Preferences (including API keys) | `<data folder>/preferences.json` |
 | Downloaded audio, waveforms, thumbnails | `<data folder>/work/<job id>/` |
+| Backups | `<data folder>/backups/`: the database and settings, copied daily and before each database upgrade; the newest 7 are kept (**Settings → Updates → Backups**) |
 | Logs | `<data folder>/logs/main.log` (**Settings → Updates → Open logs**) |
 | Saved songs | `Music/Cadence` in your home folder by default |
 
@@ -382,6 +383,8 @@ Unsigned installers work, but Windows SmartScreen shows "Windows protected your 
 - **Age-restricted videos, or the bot check keeps coming back:** in **Settings → YouTube**, choose the browser you're signed in to YouTube with (Firefox works best; close Chrome, Edge or Brave first), or a `cookies.txt` file. A proxy can be set there too.
 - **"FFmpeg not found" in development:** run `npm run setup:ffmpeg`.
 - **Identify by sound says fpcalc is missing:** run `npm run setup:chromaprint`.
+- **Reporting a problem:** **Settings → Updates → Copy diagnostics** copies versions, tool status, settings (keys and the proxy only as "set") and the end of the log, with your home folder hidden. Paste it into the issue.
+- **Restoring a backup:** quit Cadence, then copy a file from `backups/` over `cadence.db` (and the matching `preferences-….json` over `preferences.json`).
 - **The audio engine keeps stopping:** it restarts automatically up to three times in ten minutes. After that, check `main.log`.
 
 ## Legal note

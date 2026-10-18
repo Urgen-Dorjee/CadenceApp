@@ -32,6 +32,6 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Log
-      description: Settings → Troubleshooting → Open logs. Paste the end of main.log (it has no passwords or keys).
+      label: Diagnostics
+      description: Settings → Troubleshooting → **Copy diagnostics**, then paste here. It has versions, settings and the end of the log, without your home folder or keys.
       render: text
