@@ -67,7 +67,7 @@ jobs:
         if: runner.os == 'macOS' && matrix.arch == 'x64'
         run: softwareupdate --install-rosetta --agree-to-license || true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
