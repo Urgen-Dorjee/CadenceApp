@@ -765,18 +765,19 @@ def friendly_error(e: Exception) -> str:
     if "video unavailable" in lowered or "not available" in lowered:
         return "This video is unavailable. It may have been removed or blocked in your region."
     if "could not copy" in lowered and "cookie" in lowered or "failed to decrypt" in lowered:
-        return ("Couldn't read the browser's YouTube sign-in (Chrome, Edge and Brave lock it on Windows). Close the browser "
-                "and try again, or use Sign in to YouTube in Settings → YouTube, or Firefox.")
+        return ("Couldn't read the browser's YouTube sign-in: Chrome, Edge and Brave lock it on Windows. In Settings → YouTube, "
+                "use Firefox or a cookies.txt file exported from your browser.")
     if "sign in to confirm your age" in lowered or "age-restricted" in lowered:
-        return "This video is age-restricted. Use Sign in to YouTube in Settings → YouTube, then try again."
+        return ("This video is age-restricted, so YouTube needs you signed in. Set up YouTube sign-in in Settings → YouTube "
+                "(Firefox or a cookies.txt file), then try again.")
     if "sign in to confirm" in lowered:
-        return ("YouTube asked to confirm you are not a bot. Use Sign in to YouTube in Settings → YouTube, "
-                "or try again later.")
+        return ("YouTube asked to confirm you are not a bot. Set up YouTube sign-in in Settings → YouTube "
+                "(Firefox or a cookies.txt file), or try again later.")
     if "unsupported url" in lowered:
         return "That link isn't a YouTube video or playlist."
     if "http error 429" in lowered or "too many requests" in lowered:
         return ("YouTube is limiting downloads from your connection right now. Wait a few minutes, then use Try again. "
-                "Signing in (Settings → YouTube) also helps.")
+                "YouTube sign-in (Settings → YouTube) also helps.")
     if "playlist does not exist" in lowered or "this playlist is private" in lowered:
         return "This playlist doesn't exist or is private."
     if "ffmpeg not found" in lowered:

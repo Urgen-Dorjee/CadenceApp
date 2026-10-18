@@ -226,6 +226,7 @@ export const api = {
       `/api/jobs/${id}/tracklist`,
       { text },
     ),
+  youtubeSignIn: () => request<{ firefox: boolean }>('GET', '/api/youtube/sign-in'),
   diagnostics: () => request<{ text: string }>('GET', '/api/diagnostics'),
   backups: () => request<{ folder: string; backups: { name: string; size: number; created: number }[] }>('GET', '/api/backups'),
   backupNow: () => request<{ name: string }>('POST', '/api/backups'),

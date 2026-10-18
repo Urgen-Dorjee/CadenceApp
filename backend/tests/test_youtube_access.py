@@ -55,8 +55,8 @@ def test_settings_validation(client, tmp_path, patch, ok):
 @pytest.mark.parametrize("message, expected", [
     ("ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate", "age-restricted"),
     ("ERROR: [youtube] x: Sign in to confirm you're not a bot", "not a bot"),
-    ("Could not copy Chrome cookie database. See https://github.com/yt-dlp/...", "Close the browser"),
-    ("Failed to decrypt with DPAPI", "Close the browser"),
+    ("Could not copy Chrome cookie database. See https://github.com/yt-dlp/...", "lock it on Windows"),
+    ("Failed to decrypt with DPAPI", "lock it on Windows"),
     ("ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.", "This playlist doesn't exist or is private."),
     ("ERROR: [youtube] abc: Unable to download webpage: HTTP Error 429: Too Many Requests", "limiting downloads"),
 ])
