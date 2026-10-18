@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * After the Windows installer is signed (which changes its bytes), point latest.yml at the
  * signed file: installed copies check each update's sha512 and size before installing it.

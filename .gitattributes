@@ -1,0 +1,5 @@
+# Scripts run by Node, bash and CI keep Unix line endings on every system.
+*.sh   text eol=lf
+*.mjs  text eol=lf
+*.cjs  text eol=lf
+*.yml  text eol=lf
