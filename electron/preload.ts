@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (target: string) => ipcRenderer.invoke('shell:openFile', target),
   readClipboard: () => ipcRenderer.invoke('clipboard:readText'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  /** Sign in to YouTube in a window of Cadence's own; its cookies go to youtubeCookiesFile(). */
+  youtubeSignIn: () => ipcRenderer.invoke('youtube:signIn'),
+  youtubeSignOut: () => ipcRenderer.invoke('youtube:signOut'),
+  youtubeCookiesFile: () => ipcRenderer.invoke('youtube:cookiesFile'),
   openLogs: () => ipcRenderer.invoke('app:openLogs'),
   getUpdateStatus: () => ipcRenderer.invoke('update:getStatus'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),

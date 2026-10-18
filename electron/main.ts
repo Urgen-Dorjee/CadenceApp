@@ -8,6 +8,7 @@ import log from 'electron-log/main'
 import { PythonManager } from './python-manager'
 import { FFmpegManager, exe } from './ffmpeg-manager'
 import { setupAutoUpdater } from './auto-updater'
+import { signIn as youtubeSignIn, signOut as youtubeSignOut } from './youtube-signin'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -253,6 +254,11 @@ function registerIpcHandlers() {
   ipcMain.handle('app:openLogs', () => shell.openPath(path.dirname(log.transports.file.getFile().path)))
   ipcMain.handle('clipboard:readText', () => clipboard.readText())
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  // Cadence's own YouTube sign-in: cookies kept in a file in the data folder, for yt-dlp.
+  const youtubeCookies = () => path.join(app.getPath('userData'), 'youtube-cookies.txt')
+  ipcMain.handle('youtube:cookiesFile', () => youtubeCookies())
+  ipcMain.handle('youtube:signIn', async () => ({ result: await youtubeSignIn(mainWindow, youtubeCookies()), file: youtubeCookies() }))
+  ipcMain.handle('youtube:signOut', () => youtubeSignOut(youtubeCookies()))
 }
 
 function bundledTool(folder: string, exe: string): string | null {

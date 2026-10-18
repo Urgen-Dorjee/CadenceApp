@@ -765,13 +765,13 @@ def friendly_error(e: Exception) -> str:
     if "video unavailable" in lowered or "not available" in lowered:
         return "This video is unavailable. It may have been removed or blocked in your region."
     if "could not copy" in lowered and "cookie" in lowered or "failed to decrypt" in lowered:
-        return ("Couldn't read the browser's YouTube sign-in. Close the browser and try again, or use Firefox "
-                "or a cookies.txt file (Settings → YouTube).")
+        return ("Couldn't read the browser's YouTube sign-in (Chrome, Edge and Brave lock it on Windows). Close the browser "
+                "and try again, or use Sign in to YouTube in Settings → YouTube, or Firefox.")
     if "sign in to confirm your age" in lowered or "age-restricted" in lowered:
-        return "This video is age-restricted. Sign in to YouTube in your browser, then choose it in Settings → YouTube."
+        return "This video is age-restricted. Use Sign in to YouTube in Settings → YouTube, then try again."
     if "sign in to confirm" in lowered:
-        return ("YouTube asked to confirm you are not a bot. Try again later, update yt-dlp, or use your browser's "
-                "YouTube sign-in (Settings → YouTube).")
+        return ("YouTube asked to confirm you are not a bot. Use Sign in to YouTube in Settings → YouTube, "
+                "or try again later.")
     if "unsupported url" in lowered:
         return "That link isn't a YouTube video or playlist."
     if "http error 429" in lowered or "too many requests" in lowered:

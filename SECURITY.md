@@ -19,6 +19,9 @@ Only the latest release is supported; installed copies update themselves.
   only from the app itself.
 - Request URLs are never written to log files, because media URLs carry the secret.
 - Files are only ever served from Cadence's own folders or from your library's records.
+- **Sign in to YouTube** uses a separate window with its own storage, limited to Google's and YouTube's own
+  pages; the sign-in cookies are kept only in the data folder (`youtube-cookies.txt`, readable by your
+  user alone on macOS and Linux) and are removed by **Sign out**. They are used only for YouTube downloads.
 - Nothing is sent anywhere except what each feature needs: YouTube for downloads, AcoustID
   (a sound fingerprint, never the audio) and MusicBrainz for naming songs, LRCLIB for lyrics,
   and Anthropic only if you turn on "Tidy names" with your own key.
