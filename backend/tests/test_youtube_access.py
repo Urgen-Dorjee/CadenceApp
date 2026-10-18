@@ -57,6 +57,11 @@ def test_settings_validation(client, tmp_path, patch, ok):
     ("ERROR: [youtube] x: Sign in to confirm you're not a bot", "not a bot"),
     ("Could not copy Chrome cookie database. See https://github.com/yt-dlp/...", "Close the browser"),
     ("Failed to decrypt with DPAPI", "Close the browser"),
+    ("ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.", "This playlist doesn't exist or is private."),
 ])
 def test_friendly_sign_in_errors(message, expected):
     assert expected in pipeline.friendly_error(Exception(message))
+
+
+def test_other_errors_lose_yt_dlps_prefix():
+    assert pipeline.friendly_error(Exception("ERROR: [youtube] abc-DEF_123: Unable to extract player response")) ==         "Unable to extract player response"

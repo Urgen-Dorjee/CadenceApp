@@ -8,6 +8,7 @@ video:   download the whole video (or course)                 => status "complet
 import asyncio
 import logging
 import os
+import re
 import shutil
 import threading
 import time
@@ -409,7 +410,16 @@ async def _video(job_id: str) -> None:
             fields["thumbnail"] = job["thumbnail"] = record["thumbnail"]
         if not playlist:
             fields["title"] = record["title"]
+        elif len(outputs) < count:
+            # yt-dlp now waits before the next video; say so, rather than leave "100%" showing.
+            fields["message"] = f"Saved {len(outputs)} of {count} · the next video starts in a few seconds"
         asyncio.run_coroutine_threadsafe(_update(job_id, **fields), loop)
+
+    def on_thumbnail(path: str) -> None:
+        # The first video's picture, as soon as its download starts.
+        if not job.get("thumbnail"):
+            job["thumbnail"] = path
+            asyncio.run_coroutine_threadsafe(_update(job_id, thumbnail=path), loop)
 
     try:
         async with _analyze_slots:
@@ -425,11 +435,22 @@ async def _video(job_id: str) -> None:
             skip = store.downloaded_video_ids() if prefs.video_skip_saved else set()
             skip |= {o.get("video_id", "") for o in outputs}  # resuming: videos this job already saved
             await _update(job_id, status="downloading", progress=2, message="Starting the download", title=title or url)
-            await video.download(
+            result = await video.download(
                 url, options, prefs.video_dir, prefs.video_layout, playlist=playlist, count=count,
                 skip_ids=skip, pause_s=prefs.video_pause_s, rate_limit_mb=prefs.video_rate_limit_mb,
-                on_progress=on_progress, on_saved=on_saved, stop=stop,
+                on_progress=on_progress, on_saved=on_saved, stop=stop, on_thumbnail=on_thumbnail,
             )
+            failed = result["failed"]
+            if failed:
+                # Some videos of a playlist couldn't be downloaded: say so, and let Try again fetch
+                # just those (saved videos are skipped).
+                n, reason = len(outputs), friendly_error(Exception(failed[0]))
+                missing = f"{len(failed)} video{'s' if len(failed) != 1 else ''} couldn't be downloaded"
+                await _update(
+                    job_id, status="failed", outputs=outputs, message="",
+                    error=f"Saved {n} of {n + len(failed)}. {missing}: {reason} Try again to get the rest.",
+                )
+                return
             if not outputs:
                 if playlist and skip:
                     await _update(job_id, status="completed", progress=100, message="Every video in this list was already saved")
@@ -437,10 +458,10 @@ async def _video(job_id: str) -> None:
                 raise RuntimeError("The download finished, but no video file was found.")
             folder = os.path.commonpath([os.path.dirname(o["path"]) for o in outputs])
             n = len(outputs)
-            await _update(
-                job_id, status="completed", progress=100, outputs=outputs,
-                message=f"Saved {n} video{'s' if n != 1 else ''} to {folder}",
-            )
+            message = f"Saved {n} video{'s' if n != 1 else ''} to {folder}"
+            if result["missing_subtitles"]:
+                message += ". YouTube refused some subtitles (too many requests), so those videos were saved without them"
+            await _update(job_id, status="completed", progress=100, outputs=outputs, message=message)
     except video.Paused:
         await _update(job_id, status="paused", message="Paused. Resume to carry on where it stopped.", outputs=outputs)
     except youtube.Cancelled:
@@ -728,6 +749,10 @@ def friendly_error(e: Exception) -> str:
                 "YouTube sign-in (Settings → YouTube).")
     if "unsupported url" in lowered:
         return "That link isn't a YouTube video or playlist."
+    if "playlist does not exist" in lowered or "this playlist is private" in lowered:
+        return "This playlist doesn't exist or is private."
     if "ffmpeg not found" in lowered:
         return text
+    # yt-dlp's own wording, without its "[youtube:tab] <id>: " prefix.
+    text = re.sub(r"^\[[\w:]+\]\s*[\w-]+:\s*", "", text)
     return text[:400] or e.__class__.__name__

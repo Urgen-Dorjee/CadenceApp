@@ -46,6 +46,18 @@ def test_search_only_accepts_about_the_same_length(monkeypatch):
     assert lyrics.fetch("Tujhe Dekha To", "Lata", "", 300) is None
 
 
+def test_a_failing_exact_lookup_falls_back_to_search(monkeypatch):
+    import urllib.error
+
+    def flaky(path, params):
+        if path == "get":
+            raise urllib.error.HTTPError("https://lrclib.net/api/get", 503, "Service Unavailable", {}, None)
+        return [RECORD]
+
+    monkeypatch.setattr(lyrics, "_get_json", flaky)
+    assert lyrics.fetch("Tujhe Dekha To", "Lata Mangeshkar", "DDLJ", 300)["synced"] == SYNCED
+
+
 def test_instrumental_or_empty_is_none(monkeypatch):
     fake, _ = fake_lrclib(get={**RECORD, "instrumental": True})
     monkeypatch.setattr(lyrics, "_get_json", fake)

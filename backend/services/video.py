@@ -8,6 +8,7 @@ which keeps YouTube from asking to confirm you're not a bot.
 """
 
 import asyncio
+import glob
 import os
 import re
 import shutil
@@ -70,31 +71,52 @@ def _size(fmt: dict[str, Any], duration: float) -> float:
     return float(fmt.get("tbr") or 0) * 125 * duration  # kbit/s -> bytes
 
 
-def quality_choices(formats: list[dict[str, Any]], duration: float) -> list[dict[str, Any]]:
-    """The qualities a video has, each with an estimated file size (best picture + best sound)."""
-    audio = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
-    best_audio = max(audio, key=lambda f: (f.get("ext") == "m4a", f.get("abr") or 0), default=None)
-    audio_bytes = _size(best_audio, duration) if best_audio else 0.0
+def _would_download(info: dict[str, Any], quality: str, container: str) -> list[dict[str, Any]]:
+    """The formats a download with these choices would fetch, picked by yt-dlp itself with the
+    download's own settings, so the sizes shown are the sizes saved."""
+    opts = build_options({"quality": quality, "container": container}, ".", "flat", False)
+    copy = {**info, "formats": [dict(f) for f in info.get("formats") or []]}
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "format_sort": opts.get("format_sort") or []}) as ydl:
+        ydl.sort_formats(copy)
+        picked = ydl._select_formats(copy["formats"], ydl.build_format_selector(opts["format"]))
+    if not picked:
+        return []
+    return picked[0].get("requested_formats") or [picked[0]]
+
+
+def quality_choices(info: dict[str, Any]) -> list[dict[str, Any]]:
+    """The qualities a video has, each with the size of what would download: `sizes` per file
+    type (MP4 prefers H.264, MKV takes the best), and `size` for MP4."""
+    duration = float(info.get("duration") or 0)
+    formats = info.get("formats") or []
     video = [f for f in formats if f.get("vcodec") not in (None, "none") and f.get("height")]
+    has_audio = any(f.get("acodec") not in (None, "none") for f in formats)
+
+    def choice(q: str, label: str) -> dict[str, Any] | None:
+        sizes, height = {}, 0
+        for container in CONTAINERS:
+            picked = _would_download(info, q, container)
+            if not picked:
+                return None
+            sizes[container] = round(sum(_size(f, duration) for f in picked))
+            height = height or max((int(f.get("height") or 0) for f in picked), default=0)
+            if q == "audio":
+                sizes = dict.fromkeys(CONTAINERS, sizes[container])
+                break
+        return {"id": q, "label": label.format(height=height), "size": sizes["mp4"], "sizes": sizes}
+
     choices = []
     if video:
         # "Best" first, so a video that only has low qualities (240p, 360p) still offers its picture.
-        top = max(video, key=lambda f: (f["height"], str(f.get("vcodec", "")).startswith("avc1"), f.get("tbr") or 0))
-        extra = audio_bytes if top.get("acodec") in (None, "none") else 0
-        choices.append({"id": "best", "label": f"Best available ({top['height']}p)", "size": round(_size(top, duration) + extra)})
+        choices.append(choice("best", "Best available ({height}p)"))
     for q in ("2160", "1440", "1080", "720", "480"):
         height = int(q)
         # A 1080p choice also covers 1088 or 1050-high encodes; never round a 720p up to 1080p.
-        at = [f for f in video if height * 0.9 <= f["height"] <= height * 1.1]
-        if not at:
-            continue
-        # The format the download would pick: H.264 when there is one at this height (plays everywhere).
-        pick = max(at, key=lambda f: (str(f.get("vcodec", "")).startswith("avc1"), f.get("tbr") or 0))
-        separate = pick.get("acodec") in (None, "none")
-        choices.append({"id": q, "label": QUALITY_LABELS[q], "size": round(_size(pick, duration) + (audio_bytes if separate else 0))})
-    if best_audio:
-        choices.append({"id": "audio", "label": QUALITY_LABELS["audio"], "size": round(audio_bytes)})
-    return choices
+        if any(height * 0.9 <= f["height"] <= height * 1.1 for f in video):
+            choices.append(choice(q, QUALITY_LABELS[q]))
+    if has_audio:
+        choices.append(choice("audio", QUALITY_LABELS["audio"]))
+    return [c for c in choices if c]
 
 
 def subtitle_choices(info: dict[str, Any], wanted: list[str]) -> list[dict[str, Any]]:
@@ -127,7 +149,7 @@ def describe(info: dict[str, Any], wanted_subs: list[str], saved: bool) -> dict[
         "duration": duration,
         "thumbnail": info.get("thumbnail") or "",
         "chapters": [{"start": float(c.get("start_time") or 0), "title": c.get("title") or ""} for c in info.get("chapters") or []],
-        "qualities": quality_choices(info.get("formats") or [], duration),
+        "qualities": quality_choices(info),
         "subtitles": subtitle_choices(info, wanted_subs),
         "saved": saved,
     }
@@ -238,6 +260,7 @@ def build_options(options: dict[str, Any], folder: str, layout: str, playlist: b
         "ignoreerrors": "only_download" if playlist else False,  # one removed video doesn't stop a course
         "writethumbnail": True,  # kept for the library's cards; embedded only when asked
         "writedescription": bool(options.get("description")),
+        "allow_playlist_files": False,  # the playlist's own cover and description aren't videos
     }
     postprocessors: list[dict[str, Any]] = [{"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"}]
     if quality == "audio":
@@ -258,8 +281,8 @@ def build_options(options: dict[str, Any], folder: str, layout: str, playlist: b
             postprocessors.append({"key": "FFmpegSubtitlesConvertor", "format": "srt", "when": "before_dl"})
             if mode in ("embed", "both"):
                 postprocessors.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": mode == "both"})
-    postprocessors.append({"key": "FFmpegMetadata", "add_chapters": bool(options.get("chapters")) and quality != "audio",
-                           "add_metadata": True})
+    # Chapters also go into sound-only M4A files: a lecture keeps its parts in any player.
+    postprocessors.append({"key": "FFmpegMetadata", "add_chapters": bool(options.get("chapters")), "add_metadata": True})
     if options.get("thumbnail"):
         postprocessors.append({"key": "EmbedThumbnail", "already_have_thumbnail": True})
     opts["postprocessors"] = postprocessors
@@ -286,10 +309,13 @@ def _mb(n: float) -> str:
 class _Tracker:
     """Turns yt-dlp's per-file progress into one figure and a sentence for the whole download."""
 
-    def __init__(self, on_progress: Callable[[float, str], None], count: int):
-        self.on_progress, self.count = on_progress, max(1, count)
+    def __init__(self, on_progress: Callable[[float, str], None], count: int,
+                 on_started: Callable[[str, str], None] = lambda video_id, base: None):
+        self.on_progress, self.count, self.on_started = on_progress, max(1, count), on_started
         self.index, self.part, self.parts = 0, 0, 1
         self.part_files: set[str] = set()
+        # Each started video's file name without its extension: "Folder/Title".
+        self.bases: set[str] = set()
         self.last_id = ""
 
     def hook(self, d: dict[str, Any]) -> None:
@@ -297,7 +323,15 @@ class _Tracker:
         if info.get("id") != self.last_id:
             self.last_id = info.get("id", "")
             self.index = int(info.get("playlist_index") or self.index + 1)
-            self.part, self.parts = 0, max(1, len(info.get("requested_formats") or []) or 1)
+            # yt-dlp hands over each part's own details, not the list of parts. A part of a
+            # picture-plus-sound download is named "Title.f<format>.ext"; the other part is the sound.
+            filename = d.get("filename") or ""
+            separate = bool(filename) and _base_name(filename, str(info.get("format_id") or "")) != _base_name(filename, "")
+            self.part, self.parts = 0, 2 if separate else 1
+            if filename:
+                base = _base_name(filename, str(info.get("format_id") or ""))
+                self.bases.add(base)
+                self.on_started(self.last_id, base)
         for key in ("tmpfilename", "filename"):
             if d.get(key):
                 self.part_files.add(d[key])
@@ -312,13 +346,81 @@ class _Tracker:
         overall = (self.index - 1 + within) / self.count
         bits = [f"{within * 100:.0f}%"]
         if total:
-            bits.append(f"{_mb(done)} of {_mb(total)}")
+            # Picture and sound download one after the other; say which the sizes are for.
+            what = ("picture ", "sound ")[min(self.part, 1)] if self.parts > 1 else ""
+            bits.append(f"{what}{_mb(done)} of {_mb(total)}")
         if d.get("speed"):
             bits.append(f"{d['speed'] / 1024 ** 2:.1f} MB/s")
         if eta := _format_eta(d.get("eta")):
             bits.append(eta)
         prefix = f"Video {self.index} of {self.count} · " if self.count > 1 else ""
         self.on_progress(min(1.0, overall), prefix + " · ".join(bits))
+
+
+def _base_name(filename: str, format_id: str) -> str:
+    """"Folder/Title.f315.webm.part" -> "Folder/Title": the name the video and its extras share.
+    A picture or sound downloaded separately carries a ".f<format>" tag that the merged file drops."""
+    stem = os.path.splitext(filename[:-5] if filename.endswith(".part") else filename)[0]
+    tag = f".f{format_id}"
+    return stem[: -len(tag)] if format_id and stem.endswith(tag) else stem
+
+
+def copy_thumbnail(base: str, video_id: str) -> str:
+    """Copy the thumbnail written next to a video that is still downloading into Cadence's own
+    folder, so the download shows its picture. The original stays for embedding."""
+    for ext in THUMB_EXTS:
+        if os.path.isfile(base + ext):
+            os.makedirs(thumbs_dir(), exist_ok=True)
+            shutil.copyfile(base + ext, thumb_path(video_id))
+            return thumb_path(video_id)
+    return ""
+
+
+def remove_unfinished(bases: set[str], finished: set[str], since: float, root: str) -> None:
+    """After a cancel: delete what this download wrote for videos that didn't finish (partial
+    files, thumbnails, subtitles), and folders left empty. Older files are never touched."""
+    done = {os.path.splitext(p)[0] for p in finished}
+    for base in bases - done:
+        for path in glob.glob(glob.escape(base) + ".*"):
+            try:
+                if os.path.isfile(path) and os.path.getmtime(path) >= since:
+                    os.remove(path)
+            except OSError:
+                pass
+        folder = os.path.dirname(base)
+        while folder and os.path.normcase(os.path.abspath(folder)) != os.path.normcase(os.path.abspath(root)):
+            try:
+                os.rmdir(folder)  # only succeeds when empty
+            except OSError:
+                break
+            folder = os.path.dirname(folder)
+
+
+class _Problems:
+    """yt-dlp's errors and warnings during a download, so it can say what went wrong instead
+    of quietly saving fewer videos. Used as yt-dlp's logger."""
+
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+        self.missing_subtitles = 0
+
+    def debug(self, msg: str) -> None:
+        pass
+
+    def info(self, msg: str) -> None:
+        pass
+
+    def warning(self, msg: str) -> None:
+        if "Unable to download video subtitles" in msg:
+            self.missing_subtitles += 1
+
+    def error(self, msg: str) -> None:
+        self.errors.append(msg)
+
+
+class DownloadResult(dict):
+    """{"saved": videos saved, "failed": error messages of videos that weren't,
+    "missing_subtitles": subtitle downloads that failed (the videos were saved without them)}."""
 
 
 def move_thumbnail(final_path: str, video_id: str) -> str:
@@ -340,16 +442,27 @@ async def download(
     url: str, options: dict[str, Any], folder: str, layout: str, *, playlist: bool, count: int,
     skip_ids: set[str], pause_s: float, rate_limit_mb: float,
     on_progress: Callable[[float, str], None], on_saved: Callable[[dict[str, Any]], None],
-    stop: Callable[[], str],
-) -> int:
-    """Download a video or every video of a playlist. Returns how many videos were saved.
+    stop: Callable[[], str], on_thumbnail: Callable[[str], None] = lambda path: None,
+) -> DownloadResult:
+    """Download a video or every video of a playlist. Returns what was saved and what failed
+    (see DownloadResult). One video that fails, or subtitles YouTube won't give, never stop the
+    rest; a single video that can't be downloaded at all raises its error.
 
     `stop()` returns "" to carry on, "pause" or "cancel". A pause keeps partial files so
     the download resumes; a cancel removes them. `on_saved` gets each finished video's
-    record for the library.
+    record for the library. `on_thumbnail` gets each video's picture as its download starts.
     """
     os.makedirs(folder, exist_ok=True)
-    tracker = _Tracker(on_progress, count)
+    started_at = time.time() - 2  # file times can be a little behind the clock
+
+    def on_started(video_id: str, base: str) -> None:
+        try:
+            if thumb := copy_thumbnail(base, video_id):
+                on_thumbnail(thumb)
+        except OSError:
+            pass  # the picture is a nicety; the download carries on
+
+    tracker = _Tracker(on_progress, count, on_started)
     saved = 0
     finishing: dict[str, Any] = {}
 
@@ -389,16 +502,23 @@ async def download(
     def skip_saved(info: dict[str, Any], *, incomplete: bool) -> str | None:
         return "already saved" if info.get("id") in skip_ids else None
 
+    problems = _Problems()
     opts = {
         **youtube._base_opts(),
         **build_options(options, folder, layout, playlist),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [pp_hook],
+        # Carry on past a failure (and save a video whose subtitles fail); the problems are
+        # collected and reported. Warnings must be on for subtitle failures to reach the logger.
+        "ignoreerrors": True,
+        "no_warnings": False,
+        "logger": problems,
     }
     if playlist:
         opts["match_filter"] = skip_saved
         if pause_s > 0:
-            opts.update(sleep_interval=pause_s, max_sleep_interval=pause_s * 2)
+            opts.update(sleep_interval=pause_s, max_sleep_interval=pause_s * 2,
+                        sleep_interval_subtitles=min(pause_s, 3))
     if rate_limit_mb > 0:
         opts["ratelimit"] = int(rate_limit_mb * 1024 * 1024)
 
@@ -420,7 +540,10 @@ async def download(
                             os.remove(leftover)
                         except OSError:
                             pass
+            remove_unfinished(tracker.bases, set(finishing), started_at, folder)
             raise youtube.Cancelled() from e
         raise Paused() from e
-    return saved
+    if not playlist and not saved and problems.errors:
+        raise yt_dlp.utils.DownloadError(problems.errors[-1])
+    return DownloadResult(saved=saved, failed=problems.errors, missing_subtitles=problems.missing_subtitles)
 

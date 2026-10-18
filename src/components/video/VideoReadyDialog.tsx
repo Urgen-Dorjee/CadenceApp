@@ -6,7 +6,13 @@ import { api, type PlaylistDetails, type VideoDetails } from '../../services/api
 import type { VideoOptions } from '../../types/job'
 import { formatDuration } from '../../lib/time'
 import { formatSize, languageName, nearestQuality, optionsSummary } from '../../lib/video'
+import { linkKind } from '../../lib/playlists'
 import VideoOptionsPanel from './VideoOptionsPanel'
+
+/** A quality's download size for the chosen file type. */
+function sizeFor(q: VideoDetails['qualities'][number], container: VideoOptions['container']): number {
+  return q.sizes?.[container] ?? q.size
+}
 
 function Segmented<T extends string>({ value, options, onChange, label }: {
   value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; label: string
@@ -52,7 +58,7 @@ function VideoChoices({ details, options, onChange }: { details: VideoDetails; o
                   {q.id === '1080' && <span className="text-xs text-muted">Recommended: sharp on any screen</span>}
                   {q.id === 'audio' && <span className="text-xs text-muted">For listening to a lecture or talk</span>}
                 </span>
-                <span className="font-mono text-xs text-muted">{q.size ? `about ${formatSize(q.size)}` : ''}</span>
+                <span className="font-mono text-xs text-muted">{sizeFor(q, options.container) ? `about ${formatSize(sizeFor(q, options.container))}` : ''}</span>
               </button>
             )
           })}
@@ -181,7 +187,7 @@ export default function VideoReadyDialog({ link, initial, folder, onClose, onSta
         <Dialog.Content className="panel fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(860px,calc(100vw-32px))] max-h-[calc(100vh-48px)] overflow-y-auto p-5 flex flex-col gap-5 shadow-2xl">
           <div className="flex items-start gap-3">
             <Dialog.Title className="flex-1 font-display text-lg font-semibold">
-              {details?.kind === 'playlist' ? 'Download this playlist' : 'Download this video'}
+              {(details ? details.kind === 'playlist' : linkKind(link ?? '') !== 'video') ? 'Download this playlist' : 'Download this video'}
             </Dialog.Title>
             <Dialog.Close className="btn-icon" aria-label="Close" disabled={starting}><X size={16} /></Dialog.Close>
           </div>
@@ -257,7 +263,7 @@ export default function VideoReadyDialog({ link, initial, folder, onClose, onSta
                 {starting ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
                 {details.kind === 'playlist'
                   ? toDownload > 0 ? `Download ${toDownload} video${toDownload === 1 ? '' : 's'}` : 'All saved already'
-                  : `Download${chosen?.size ? ` (about ${formatSize(chosen.size)})` : ''}`}
+                  : `Download${chosen && sizeFor(chosen, options.container) ? ` (about ${formatSize(sizeFor(chosen, options.container))})` : ''}`}
               </button>
             </div>
           )}

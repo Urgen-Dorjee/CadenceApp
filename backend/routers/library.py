@@ -256,6 +256,10 @@ async def remove_video(body: RemoveVideoIn):
     if body.delete_file:
         files = [body.path, *_sidecars(body.path)] if os.path.isfile(body.path) else []
         moved = await asyncio.to_thread(pipeline._trash, files)
-    if record and record.get("thumbnail") and os.path.isfile(record["thumbnail"]):
-        os.remove(record["thumbnail"])
+    thumb = (record or {}).get("thumbnail")
+    # The picture is shared by every copy of a video and by its download in the list.
+    still_used = any(v.get("thumbnail") == thumb for v in await asyncio.to_thread(store.list_videos)) or any(
+        j.get("thumbnail") == thumb for j in await asyncio.to_thread(store.list))
+    if thumb and not still_used and os.path.isfile(thumb):
+        os.remove(thumb)
     return {"removed": True, "deleted": body.path in moved}

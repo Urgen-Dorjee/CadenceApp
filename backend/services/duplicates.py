@@ -9,12 +9,15 @@ happens to share a title, or a short edit, isn't flagged.
 
 Titles saved as "3.Every Breath You Take - The Police" (a number, and the singer
 after a dash) also match "Every Breath You Take".
+
+Placeholder names like "Track 3" never match: every unnamed song is called that.
 """
 
 import re
 import unicodedata
 from typing import Any
 
+from services.identify import needs_name
 from services.library import same_file_key
 from services.tracklist import clean_title
 
@@ -82,6 +85,8 @@ def find(tracks: list[dict[str, Any]], songs: list[dict[str, Any]], exclude_path
                     bucket.append(song)
     found: dict[str, list[dict[str, Any]]] = {}
     for track in tracks:
+        if needs_name(track):
+            continue
         candidates: list[dict[str, Any]] = []
         for title, _ in readings(track["title"], ""):
             candidates += [s for s in by_title.get(normalize(title), []) if s not in candidates]

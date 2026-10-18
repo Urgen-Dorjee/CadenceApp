@@ -23,7 +23,8 @@ def client():
 
 
 def _fmt(fid, height=None, vcodec="none", acodec="none", size=None, tbr=None, ext="mp4", abr=None):
-    return {"format_id": fid, "height": height, "vcodec": vcodec, "acodec": acodec, "filesize": size, "tbr": tbr, "ext": ext, "abr": abr}
+    return {"format_id": fid, "height": height, "vcodec": vcodec, "acodec": acodec, "filesize": size, "tbr": tbr, "ext": ext, "abr": abr,
+            "url": f"https://example.com/{fid}", "protocol": "https"}
 
 
 FORMATS = [
@@ -39,18 +40,19 @@ FORMATS = [
 
 # --- What a link holds --------------------------------------------------------------
 
-def test_each_quality_is_offered_with_picture_plus_sound_size():
-    choices = {c["id"]: c for c in video.quality_choices(FORMATS, 3600)}
+def test_each_quality_is_offered_with_the_size_of_what_would_download():
+    choices = {c["id"]: c for c in video.quality_choices({"formats": FORMATS, "duration": 3600})}
     assert list(choices) == ["best", "2160", "1080", "720", "audio"]  # no 1440p or 480p in this video
-    assert choices["best"]["label"] == "Best available (2160p)" and choices["best"]["size"] == choices["2160"]["size"]
-    assert choices["1080"]["size"] == 700_000_000 + 60_000_000   # the H.264 picture, and AAC sound
-    assert choices["2160"]["size"] == 3_000_000_000 + 60_000_000
+    assert choices["best"]["label"] == "Best available (2160p)" and choices["best"]["sizes"] == choices["2160"]["sizes"]
+    assert choices["1080"]["sizes"]["mp4"] == 700_000_000 + 60_000_000   # MP4: the H.264 picture and AAC sound
+    assert choices["1080"]["sizes"]["mkv"] == 500_000_000 + 55_000_000   # MKV: the smaller VP9 picture and Opus
+    assert choices["1080"]["size"] == choices["1080"]["sizes"]["mp4"]
     assert choices["audio"]["size"] == 60_000_000
 
 
 def test_sizes_are_estimated_from_bitrate_when_youtube_gives_none():
     formats = [_fmt("140", acodec="mp4a", tbr=128, ext="m4a"), _fmt("137", 1080, vcodec="avc1", tbr=4000)]
-    choices = {c["id"]: c["size"] for c in video.quality_choices(formats, 100)}
+    choices = {c["id"]: c["size"] for c in video.quality_choices({"formats": formats, "duration": 100})}
     assert choices["1080"] == (4000 + 128) * 125 * 100
 
 
@@ -77,7 +79,7 @@ def test_details_of_a_video_mark_whether_it_was_saved_before():
 def test_a_video_with_only_low_qualities_still_offers_its_picture():
     formats = [_fmt("140", acodec="mp4a", size=300_000, ext="m4a"), _fmt("160", 144, vcodec="avc1", size=200_000),
                _fmt("133", 240, vcodec="avc1", size=400_000)]
-    choices = video.quality_choices(formats, 19)
+    choices = video.quality_choices({"formats": formats, "duration": 19})
     assert [(c["id"], c["label"]) for c in choices] == [("best", "Best available (240p)"), ("audio", "Sound only (M4A)")]
 
 
@@ -140,15 +142,18 @@ def test_subtitle_files_are_kept_when_asked():
 def test_progress_reads_as_one_figure_for_picture_and_sound_and_for_a_course():
     seen = []
     tracker = video._Tracker(lambda f, m: seen.append((round(f, 3), m)), count=4)
-    info = {"id": "v2", "playlist_index": 2, "requested_formats": [{}, {}]}
-    tracker.hook({"status": "downloading", "info_dict": info, "downloaded_bytes": 50, "total_bytes": 100,
-                  "speed": 4.2 * 1024 ** 2, "eta": 100, "tmpfilename": "a.f137.mp4.part"})
-    tracker.hook({"status": "finished", "info_dict": info, "filename": "a.f137.mp4"})
-    tracker.hook({"status": "downloading", "info_dict": info, "downloaded_bytes": 0, "total_bytes": 10})
+    # As yt-dlp sends it: each part's own details (no list of parts), named "Title.f<format>.ext".
+    picture = {"id": "v2", "playlist_index": 2, "format_id": "137"}
+    sound = {**picture, "format_id": "140"}
+    tracker.hook({"status": "downloading", "info_dict": picture, "downloaded_bytes": 50, "total_bytes": 100,
+                  "speed": 4.2 * 1024 ** 2, "eta": 100, "tmpfilename": "a.f137.mp4.part", "filename": "a.f137.mp4"})
+    tracker.hook({"status": "finished", "info_dict": picture, "filename": "a.f137.mp4"})
+    tracker.hook({"status": "downloading", "info_dict": sound, "downloaded_bytes": 0, "total_bytes": 10, "filename": "a.f140.m4a"})
     assert seen[0][0] == round((1 + 0.25) / 4, 3)          # video 2 of 4, picture half done
-    assert seen[0][1].startswith("Video 2 of 4 · 25%") and "4.2 MB/s" in seen[0][1] and "1 min 40 s left" in seen[0][1]
+    assert seen[0][1].startswith("Video 2 of 4 · 25% · picture ") and "4.2 MB/s" in seen[0][1] and "1 min 40 s left" in seen[0][1]
+    assert "· sound " in seen[1][1]
     assert seen[1][0] == round((1 + 0.5) / 4, 3)           # picture done, sound starting
-    assert "a.f137.mp4.part" in tracker.part_files
+    assert "a.f137.mp4.part" in tracker.part_files and tracker.bases == {"a"}
 
 
 # --- Downloading, pausing and cancelling (yt-dlp replaced by a stand-in) ---------------
@@ -177,17 +182,24 @@ class FakeYDL:
                     "height": 1080, "duration": 60, "requested_subtitles": {"en": {}}}
             if self.opts.get("match_filter") and self.opts["match_filter"](info, incomplete=False):
                 continue
-            part = os.path.join(folder, f"Part {i}.mp4.part")
+            if FakeYDL.behaviour == "second fails" and i == 2:
+                self.opts["logger"].error(f"ERROR: [youtube] {vid}: Video unavailable. This video has been removed")
+                continue
+            if FakeYDL.behaviour == "no subtitles":
+                self.opts["logger"].warning("Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests")
+            # Like yt-dlp: thumbnail and subtitles are written before the video downloads.
+            open(os.path.join(folder, f"Part {i}.jpg"), "w").close()
+            open(os.path.join(folder, f"Part {i}.en.srt"), "w").close()
+            final = os.path.join(folder, f"Part {i}.mp4")
+            part = final + ".part"
             open(part, "w").close()
             for hook in self.opts["progress_hooks"]:
-                hook({"status": "downloading", "info_dict": info, "downloaded_bytes": 5, "total_bytes": 10, "tmpfilename": part})
-            if FakeYDL.behaviour != "finish":
+                hook({"status": "downloading", "info_dict": info, "downloaded_bytes": 5, "total_bytes": 10, "tmpfilename": part, "filename": final})
+            if FakeYDL.behaviour in ("pause", "cancel"):
                 FakeYDL.stop_now()
                 for hook in self.opts["progress_hooks"]:
-                    hook({"status": "downloading", "info_dict": info, "downloaded_bytes": 6, "total_bytes": 10, "tmpfilename": part})
-            final = os.path.join(folder, f"Part {i}.mp4")
+                    hook({"status": "downloading", "info_dict": info, "downloaded_bytes": 6, "total_bytes": 10, "tmpfilename": part, "filename": final})
             os.replace(part, final)
-            open(os.path.join(folder, f"Part {i}.jpg"), "w").close()
             for hook in self.opts["postprocessor_hooks"]:
                 hook({"status": "finished", "postprocessor": "MoveFiles", "info_dict": {**info, "filepath": final}})
 
@@ -199,26 +211,28 @@ def _run(tmp_path, monkeypatch, behaviour="finish", skip=()):
     FakeYDL.behaviour = behaviour
     FakeYDL.stop_now = staticmethod(lambda: state.update(stop=behaviour))
     saved, progress = [], []
+    _run.thumbnails = []
     result = asyncio.run(video.download(
         "https://www.youtube.com/playlist?list=PLx", OPTIONS, str(tmp_path), "flat", playlist=True, count=2,
         skip_ids=set(skip), pause_s=5, rate_limit_mb=2, on_progress=lambda f, m: progress.append(m),
-        on_saved=saved.append, stop=lambda: state["stop"],
+        on_saved=saved.append, stop=lambda: state["stop"], on_thumbnail=_run.thumbnails.append,
     ))
     return result, saved, progress
 
 
 def test_a_course_downloads_every_video_and_records_each_for_the_library(tmp_path, monkeypatch):
-    count, saved, progress = _run(tmp_path, monkeypatch)
-    assert count == 2 and [s["title"] for s in saved] == ["Part 1", "Part 2"]
+    result, saved, progress = _run(tmp_path, monkeypatch)
+    assert result == {"saved": 2, "failed": [], "missing_subtitles": 0} and [s["title"] for s in saved] == ["Part 1", "Part 2"]
     assert saved[0]["playlist"] == "Course" and saved[0]["playlist_index"] == 1 and saved[0]["subtitles"] == ["en"]
     assert saved[0]["thumbnail"] == video.thumb_path("aaaaaaaaaaa") and os.path.isfile(saved[0]["thumbnail"])
     assert not os.path.exists(tmp_path / "Part 1.jpg")          # moved out of the video folder
     assert progress[0].startswith("Video 1 of 2")
+    assert _run.thumbnails[0] == video.thumb_path("aaaaaaaaaaa")  # shown while it downloads
 
 
 def test_videos_already_saved_are_skipped(tmp_path, monkeypatch):
-    count, saved, _ = _run(tmp_path, monkeypatch, skip={"aaaaaaaaaaa"})
-    assert count == 1 and saved[0]["video_id"] == "bbbbbbbbbbb"
+    result, saved, _ = _run(tmp_path, monkeypatch, skip={"aaaaaaaaaaa"})
+    assert result["saved"] == 1 and saved[0]["video_id"] == "bbbbbbbbbbb"
 
 
 def test_pausing_keeps_the_partial_file_so_it_can_resume(tmp_path, monkeypatch):
@@ -227,10 +241,77 @@ def test_pausing_keeps_the_partial_file_so_it_can_resume(tmp_path, monkeypatch):
     assert os.path.exists(tmp_path / "Part 1.mp4.part")
 
 
+def test_one_failing_video_doesnt_stop_the_rest_and_is_reported(tmp_path, monkeypatch):
+    result, saved, _ = _run(tmp_path, monkeypatch, behaviour="second fails")
+    assert result["saved"] == 1 and [s["title"] for s in saved] == ["Part 1"]
+    assert "Video unavailable" in result["failed"][0]
+
+
+def test_refused_subtitles_dont_cost_the_video(tmp_path, monkeypatch):
+    result, saved, _ = _run(tmp_path, monkeypatch, behaviour="no subtitles")
+    assert result["saved"] == 2 and result["missing_subtitles"] == 2 and not result["failed"]
+
+
+def test_a_single_video_that_cant_be_downloaded_fails_with_its_reason(tmp_path, monkeypatch):
+    class Broken(FakeYDL):
+        def download(self, urls):
+            self.opts["logger"].error("ERROR: [youtube] aaaaaaaaaaa: Private video")
+
+    monkeypatch.setattr(video.yt_dlp, "YoutubeDL", Broken)
+    monkeypatch.setattr(youtube, "_base_opts", lambda: {})
+    with pytest.raises(video.yt_dlp.utils.DownloadError, match="Private video"):
+        asyncio.run(video.download("https://www.youtube.com/watch?v=aaaaaaaaaaa", OPTIONS, str(tmp_path), "flat",
+                                   playlist=False, count=1, skip_ids=set(), pause_s=0, rate_limit_mb=0,
+                                   on_progress=lambda f, m: None, on_saved=lambda r: None, stop=lambda: ""))
+
+
+def test_a_course_with_missing_videos_ends_as_failed_so_try_again_fetches_them(monkeypatch):
+    job = get_store().create("https://www.youtube.com/playlist?list=PLx", kind="video", options=OPTIONS)
+
+    async def fake_download(url, options, folder, layout, **kw):
+        kw["on_saved"]({"path": os.path.abspath("Course/01 - One.mp4"), "video_id": "aaaaaaaaaaa", "title": "One",
+                        "thumbnail": ""})
+        return video.DownloadResult(saved=1, failed=["ERROR: [youtube] bbbbbbbbbbb: Video unavailable"], missing_subtitles=0)
+
+    async def fake_list(url):
+        return {"title": "Course", "entries": [{"id": "a"}, {"id": "b"}]}
+
+    monkeypatch.setattr(video, "download", fake_download)
+    monkeypatch.setattr(youtube, "list_videos", fake_list)
+    monkeypatch.setattr(get_store(), "add_video", lambda record: None)
+    asyncio.run(pipeline._video(job["id"]))
+    done = get_store().get(job["id"])
+    assert done["status"] == "failed" and len(done["outputs"]) == 1
+    assert done["error"].startswith("Saved 1 of 2. 1 video couldn't be downloaded:") and "Try again" in done["error"]
+
+
 def test_cancelling_removes_the_partial_file(tmp_path, monkeypatch):
     with pytest.raises(youtube.Cancelled):
         _run(tmp_path, monkeypatch, behaviour="cancel")
     assert not os.path.exists(tmp_path / "Part 1.mp4.part")
+
+
+def test_cancelling_removes_the_unfinished_videos_extras_but_never_older_files(tmp_path, monkeypatch):
+    older = tmp_path / "Part 1.description"
+    older.write_text("from an earlier download")
+    os.utime(older, (1_000_000, 1_000_000))
+    with pytest.raises(youtube.Cancelled):
+        _run(tmp_path, monkeypatch, behaviour="cancel")
+    assert not os.path.exists(tmp_path / "Part 1.jpg") and not os.path.exists(tmp_path / "Part 1.en.srt")
+    assert older.exists()
+
+
+def test_cleaning_up_removes_folders_left_empty_up_to_the_video_folder(tmp_path):
+    channel = tmp_path / "Videos" / "Blender"
+    channel.mkdir(parents=True)
+    (channel / "Film.jpg").write_text("x")
+    video.remove_unfinished({str(channel / "Film")}, set(), 0, str(tmp_path / "Videos"))
+    assert not channel.exists() and (tmp_path / "Videos").exists()
+
+
+def test_base_name_drops_only_the_downloading_formats_tag():
+    assert video._base_name("C:/V/Film.f315.webm.part", "315") == "C:/V/Film"
+    assert video._base_name("C:/V/Talk.f1.mp4", "18") == "C:/V/Talk.f1"   # one file: ".f1" is part of the title
 
 
 def test_the_download_options_carry_the_pause_and_speed_limit(tmp_path, monkeypatch):
@@ -313,6 +394,18 @@ def test_removing_a_video_from_the_library(client, tmp_path):
     r = client.post("/api/library/videos/remove", headers=AUTH, json={"path": str(path)})
     assert r.json() == {"removed": True, "deleted": False} and path.exists()
     assert client.post("/api/library/videos/remove", headers=AUTH, json={"path": str(path)}).status_code == 404
+
+
+def test_removing_one_copy_keeps_the_picture_the_other_copy_uses(client, tmp_path):
+    thumb = tmp_path / "ffffffffffff.jpg"
+    thumb.write_bytes(b"jpg")
+    for name in ("Film.mp4", "Film.mkv"):
+        (tmp_path / name).write_bytes(b"x")
+        get_store().add_video({"path": str(tmp_path / name), "video_id": "fffffffffff", "title": "Film", "thumbnail": str(thumb)})
+    client.post("/api/library/videos/remove", headers=AUTH, json={"path": str(tmp_path / "Film.mp4")})
+    assert thumb.exists()
+    client.post("/api/library/videos/remove", headers=AUTH, json={"path": str(tmp_path / "Film.mkv")})
+    assert not thumb.exists()
 
 
 def test_video_settings_are_checked(client):
