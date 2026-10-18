@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { isRunning, type Job } from '../../types/job'
 import { isCourse, optionsSummary } from '../../lib/video'
+import { useVideoPlayer } from '../../stores/videoPlayerStore'
 import StatusPill from '../ui/StatusPill'
 import ProgressBar from '../ui/ProgressBar'
 
@@ -35,8 +36,11 @@ export default function VideoJobCard({ job, showKind = true }: { job: Job; showK
   const run = (action: () => Promise<unknown>, failure: string) =>
     action().catch((e: Error) => toast.error(`${failure}: ${e.message}`))
 
+  const openPlayer = useVideoPlayer((s) => s.open)
+  // Sound-only downloads (M4A) play in the system's player; videos in Cadence's own.
   const play = async () => {
     if (!first) return
+    if (job.options?.quality !== 'audio') return openPlayer(first.path)
     const problem = await window.electronAPI?.openFile(first.path)
     if (problem) toast.error(problem)
   }
@@ -67,7 +71,7 @@ export default function VideoJobCard({ job, showKind = true }: { job: Job; showK
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
-        {job.status === 'completed' && first && !course && (
+        {job.status === 'completed' && first && (
           <button className="btn-primary" onClick={play}>
             <Play size={13} aria-hidden="true" /> Play
           </button>

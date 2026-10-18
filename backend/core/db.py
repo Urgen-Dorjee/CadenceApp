@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS videos (
     thumbnail       TEXT NOT NULL DEFAULT '',
     saved_at        REAL NOT NULL
 );
+
+-- Where each downloaded video was left off in the built-in player. Kept apart from
+-- the videos table, so downloading a video again doesn't forget it.
+CREATE TABLE IF NOT EXISTS video_progress (
+    path        TEXT PRIMARY KEY,
+    position    REAL NOT NULL DEFAULT 0,
+    duration    REAL NOT NULL DEFAULT 0,
+    updated_at  REAL NOT NULL
+);
 """
 
 _JSON_FIELDS = ("collection", "sources", "tracks", "outputs", "options")
@@ -167,9 +176,22 @@ class JobStore:
             self._conn.commit()
 
     def list_videos(self) -> "list[dict[str, Any]]":
+        """Every downloaded video, newest first, with where it was left off in the player
+        (`position`, 0 if never played)."""
         with self._lock:
-            rows = self._conn.execute("SELECT * FROM videos ORDER BY saved_at DESC").fetchall()
+            rows = self._conn.execute(
+                "SELECT v.*, COALESCE(p.position, 0) AS position FROM videos v "
+                "LEFT JOIN video_progress p ON p.path = v.path ORDER BY v.saved_at DESC"
+            ).fetchall()
         return [{**dict(r), "subtitles": json.loads(r["subtitles"])} for r in rows]
+
+    def set_video_progress(self, path: str, position: float, duration: float) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO video_progress (path, position, duration, updated_at) VALUES (?, ?, ?, ?)",
+                (path, max(0.0, position), max(0.0, duration), time.time()),
+            )
+            self._conn.commit()
 
     def remove_video(self, path: str) -> dict[str, Any] | None:
         with self._lock:

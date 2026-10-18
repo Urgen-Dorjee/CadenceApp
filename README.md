@@ -181,6 +181,7 @@ Switch **New download** to **Video** to save whole videos instead of songs.
 - **Playlists and courses** save in order as numbered files in their own folder, skip videos already saved, and pause 5–10 s between videos so YouTube doesn't block downloads.
 - **Pause and resume.** A paused download carries on from where it stopped. Cancel removes the unfinished file.
 - **Downloads** lists music splits and videos together; the **Library** has a **Videos** tab with search and filters for courses and subtitles.
+- **Built-in player.** Videos play inside Cadence: subtitles (from the .srt files or inside the video), chapters on the seek bar and in a list, speed from 0.5× to 2×, full screen and picture in picture. It carries on where you stopped, marks watched videos in the library, and plays a course in order. Keys: Space or K play, ←/→ 5 s, J/L 10 s, ↑/↓ volume, M mute, C subtitles, F full screen, < and > speed, Shift+N/P next or previous video, 0–9 jump. A file whose picture or sound it can't decode opens in another player.
 
 Videos go to `Videos\Cadence\<Channel>\` by default (Settings → Video downloads), with a speed limit if you share the connection.
 
