@@ -72,6 +72,8 @@ export function groupSongs(songs: LibrarySong[], by: 'artist' | 'album'): SongGr
 
 /** What another screen (the player) asks the Library to do when it opens. */
 export interface LibraryIntent {
+  /** Show only these files (songs saved from one video). */
+  only?: string[]
   open?: { kind: 'artist' | 'album'; key: string }
   edit?: LibrarySong[]
   send?: LibrarySong[]

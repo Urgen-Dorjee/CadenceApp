@@ -60,6 +60,20 @@ CREATE TABLE IF NOT EXISTS videos (
     saved_at        REAL NOT NULL
 );
 
+-- Each song saved from a YouTube video: which video and which part of it. Kept after the
+-- split leaves the list, so pasting the link again shows what was saved and doesn't save
+-- the same songs twice, even renamed.
+CREATE TABLE IF NOT EXISTS saved_songs (
+    path      TEXT PRIMARY KEY,
+    video_id  TEXT NOT NULL,
+    start     REAL NOT NULL DEFAULT 0,
+    "end"     REAL NOT NULL DEFAULT 0,
+    title     TEXT NOT NULL DEFAULT '',
+    job_id    TEXT NOT NULL DEFAULT '',
+    saved_at  REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS saved_songs_video ON saved_songs (video_id);
+
 -- Where each downloaded video was left off in the built-in player. Kept apart from
 -- the videos table, so downloading a video again doesn't forget it.
 CREATE TABLE IF NOT EXISTS video_progress (
@@ -95,6 +109,7 @@ class JobStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
         self._migrate()
+        self._backfill_saved_songs()
         self._conn.commit()
 
     def _migrate(self) -> None:
@@ -103,6 +118,53 @@ class JobStore:
         for column, ddl in _ADDED_COLUMNS.items():
             if column not in existing:
                 self._conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {ddl}")
+
+    def _backfill_saved_songs(self) -> None:
+        """Songs saved before saved_songs existed: taken from the splits still in the list."""
+        if self._conn.execute("SELECT 1 FROM saved_songs LIMIT 1").fetchone():
+            return
+        rows = []
+        for job in self._conn.execute("SELECT id, tracks, sources, outputs, updated_at FROM jobs WHERE outputs != '[]'"):
+            try:
+                tracks = {t["id"]: t for t in json.loads(job["tracks"])}
+                online = {s["id"] for s in json.loads(job["sources"]) if not s.get("local")}
+                outputs = json.loads(job["outputs"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            for o in outputs:
+                t = tracks.get(o.get("track_id"))
+                if t and t.get("source_id") in online and o.get("path"):
+                    rows.append((o["path"], t["source_id"], t["start"], t["end"], o.get("title", ""), job["id"], job["updated_at"]))
+        self._conn.executemany(
+            'INSERT OR IGNORE INTO saved_songs (path, video_id, start, "end", title, job_id, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?)', rows)
+
+    def record_saved_songs(self, songs: Sequence[dict[str, Any]]) -> None:
+        """Remember songs just saved: {path, video_id, start, end, title, job_id}."""
+        if not songs:
+            return
+        now = time.time()
+        with self._lock:
+            self._conn.executemany(
+                'INSERT OR REPLACE INTO saved_songs (path, video_id, start, "end", title, job_id, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [(x["path"], x["video_id"], x["start"], x["end"], x.get("title", ""), x.get("job_id", ""), now) for x in songs],
+            )
+            self._conn.commit()
+
+    def forget_saved_songs(self, paths: Sequence[str]) -> None:
+        with self._lock:
+            self._conn.executemany("DELETE FROM saved_songs WHERE path = ?", [(p,) for p in paths])
+            self._conn.commit()
+
+    def saved_songs(self, video_ids: Sequence[str]) -> "list[dict[str, Any]]":
+        """Songs saved from these videos, oldest first, whether or not their files are still there."""
+        if not video_ids:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM saved_songs WHERE video_id IN ({','.join('?' * len(video_ids))}) ORDER BY video_id, start",
+                list(video_ids),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def _row_to_job(self, row: sqlite3.Row) -> dict[str, Any]:
         job = dict(row)

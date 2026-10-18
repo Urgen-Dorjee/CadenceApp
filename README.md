@@ -35,6 +35,7 @@ xattr -cr /Applications/Cadence.app
 
 - [Features](#features)
 - [How it finds the songs](#how-it-finds-the-songs)
+- [Pasting a link again](#pasting-a-link-again)
 - [Naming songs](#naming-songs)
 - [Where songs go](#where-songs-go)
 - [Video downloads](#video-downloads)
@@ -114,6 +115,16 @@ Nothing is saved until you review the result. Uncertain cuts and segments too sh
 Songs already in your library are marked **In library**, with a **Skip them** button. A match needs the same title once case, punctuation and upload noise are ignored, a shared singer when both name one, and lengths within 10 s.
 
 The review screen is keyboard-friendly: **Space** plays, **←/→** move the cut (Shift for 1 s), **[ ]** jump between cuts, **H** plays the audio around a cut, **↑/↓** select songs, **X** includes or skips one, **S** splits at the playhead, **J** joins with the next song, and **Ctrl+Z / Ctrl+Shift+Z** undo and redo any change. Press **?** for the full list.
+
+## Pasting a link again
+
+Cadence remembers which songs it saved from each YouTube video and which part of the video each one is (in `cadence.db`, kept even after a split leaves the list), so a link pasted again carries on instead of starting over:
+
+- **Its split is still in the list:** it opens. Songs saved before are marked **Saved**, and **Select the remaining** ticks only the ones not saved yet; saving those just adds them, numbered after the first ones, and the album's playlist is rewritten with every song.
+- **The split was removed, but songs from it are in your library:** Cadence says so, with **Show them** (those songs in the Library) or **Split it again**, where the songs you already have come unticked. They're recognised by the part of the video they came from, so renamed songs and ones still called "Track 3" count too.
+- **A video downloaded whole before:** "Video ready" offers to play your copy or download it again in another quality (with the choices screen off, it just plays).
+
+Saving songs that were saved before still asks whether to replace them or keep both. Replacing never removes a song you only left unticked.
 
 ## Splitting files from your computer
 

@@ -157,6 +157,33 @@ class TracklistIn(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
 
 
+@router.post("/links/history")
+async def link_history(body: LinkIn):
+    """What was done with a video link before, so pasting it again can carry on instead of
+    starting over: its splits still in the list, the songs saved from it (still on disk), and
+    the copies of it downloaded whole."""
+    vid = youtube.video_id(body.url) if youtube.link_kind(body.url) == "video" else None
+    if not vid:
+        return {"video_id": None, "jobs": [], "songs": [], "videos": []}
+    store = get_store()
+    jobs = []
+    for job in await asyncio.to_thread(store.list):
+        if youtube.video_id(job["url"] or "") == vid or any(s["id"] == vid for s in job["sources"] if not s.get("local")):
+            jobs.append({
+                "id": job["id"], "kind": job.get("kind") or "music", "status": job["status"],
+                "saved": len(job.get("outputs") or []), "songs": len(job.get("tracks") or []),
+            })
+    songs = [
+        {"path": r["path"], "title": r["title"], "saved_at": r["saved_at"]}
+        for r in await asyncio.to_thread(store.saved_songs, [vid]) if os.path.isfile(r["path"])
+    ]
+    videos = [
+        {"path": v["path"], "height": v["height"], "ext": v["ext"]}
+        for v in await asyncio.to_thread(store.list_videos) if v["video_id"] == vid and os.path.isfile(v["path"])
+    ]
+    return {"video_id": vid, "jobs": jobs, "songs": songs, "videos": videos}
+
+
 @router.post("/links/expand")
 async def expand_link(body: LinkIn):
     """The videos of a playlist or channel link, each marked "saved" (its songs were saved before)
@@ -317,7 +344,13 @@ async def find_duplicates(job_id: str, body: ReviewIn):
     tracks = [t.model_dump() for t in body.tracks]
     songs = await asyncio.to_thread(song_index.get_index().list)
     own = [o["path"] for o in job.get("outputs") or []]
-    return await asyncio.to_thread(duplicates.find, tracks, songs, own)
+    found = await asyncio.to_thread(duplicates.find, tracks, songs, own)
+    # Songs saved before from the same part of the same video, whatever they are called now.
+    saved = await asyncio.to_thread(get_store().saved_songs, sorted({t["source_id"] for t in tracks}))
+    for track_id, matches in (await asyncio.to_thread(duplicates.find_same_part, tracks, saved, songs, own)).items():
+        known = {m["path"] for m in found.get(track_id, [])}
+        found.setdefault(track_id, []).extend(m for m in matches if m["path"] not in known)
+    return found
 
 
 @router.post("/jobs/{job_id}/tracklist")

@@ -16,6 +16,8 @@ interface Props {
   showArtist: boolean
   /** "Already in your library as …" when this song was saved before. */
   inLibrary?: string
+  /** Saved from this split before. */
+  saved?: boolean
   onChange: (id: string, patch: Partial<Track>) => void
   onStart: (index: number, t: number) => void
   onEnd: (index: number, t: number) => void
@@ -71,6 +73,11 @@ function TrackRow(p: Props) {
               title={`Recognised by AcoustID (${Math.round((track.match.score ?? 0) * 100)}% match)${track.match.album ? ` · from “${track.match.album}”` : ''}`}
             >
               Identified
+            </span>
+          )}
+          {p.saved && (
+            <span className="shrink-0 inline-flex items-center h-5 px-1.5 rounded-full bg-ok/15 text-ok text-[10.5px] font-semibold" title="Saved from this split before">
+              Saved
             </span>
           )}
           {p.inLibrary && (
