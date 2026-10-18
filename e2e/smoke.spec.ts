@@ -48,6 +48,27 @@ test('a setting changed in Settings is saved', async () => {
   await expect.poll(async () => (await api<{ audio_format: string }>(page, 'GET', '/api/preferences')).audio_format).toBe('mp3')
 })
 
+test('the Settings list jumps to sections, follows scrolling, and never pushes the window out of reach', async () => {
+  const { page } = run
+  await page.getByRole('link', { name: 'Settings', exact: true }).first().click()
+  const list = page.getByRole('navigation', { name: 'Settings sections' })
+  await list.getByRole('link', { name: 'Updates' }).click()
+  await expect(list.getByRole('link', { name: 'Updates' })).toHaveAttribute('aria-current', 'location')
+  await page.waitForTimeout(1500) // the smooth scroll
+  // The title bar, sidebar and the list itself stay where they are: only the page area scrolls.
+  expect(await page.evaluate(() => [document.documentElement.scrollTop, document.body.scrollTop])).toEqual([0, 0])
+  expect((await page.locator('header').first().boundingBox())!.y).toBe(0)
+  await expect(list.getByRole('link', { name: 'Saving songs' })).toBeInViewport()
+  // Scrolling by hand moves the highlight.
+  await page.locator('#main-content').evaluate((main) => main.scrollTo({ top: 0 }))
+  await expect(list.getByRole('link', { name: 'Saving songs' })).toHaveAttribute('aria-current', 'location')
+  await page.locator('#main-content').evaluate((main) => {
+    const video = document.getElementById('video')!
+    main.scrollTo({ top: main.scrollTop + video.getBoundingClientRect().top - main.getBoundingClientRect().top })
+  })
+  await expect(list.getByRole('link', { name: 'Video downloads' })).toHaveAttribute('aria-current', 'location')
+})
+
 test('a file from the computer is split and its songs saved', async () => {
   const { page } = run
   const file = makeTwoSongs(join(run.musicDir, '..'))

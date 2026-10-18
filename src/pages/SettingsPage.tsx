@@ -1,5 +1,5 @@
-import { ReactNode, useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { Check, ClipboardCopy, DatabaseBackup, FolderOpen, Loader2, RefreshCw, Trash2, Monitor, Moon, Sun, FolderInput, MessageSquareMore } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -108,6 +108,11 @@ function Choice({ selected, onClick, icon, title, note }: { selected: boolean; o
 
 export default function SettingsPage() {
   const { hash } = useLocation()
+  const navigate = useNavigate()
+  // The section being read, highlighted in the list on the left.
+  const [active, setActive] = useState(hash.slice(1) || SECTIONS[0].id)
+  // While scrolling to a clicked section, keep that one highlighted (it may not reach the top).
+  const goingTo = useRef<string | null>(null)
   const ready = useAppStore((s) => s.backend === 'ready')
   const ytDlpVersion = useAppStore((s) => s.ytDlpVersion)
   const identifyBuiltIn = useAppStore((s) => s.identifyBuiltIn)
@@ -171,10 +176,50 @@ ${text}`)
     if (ready) refreshStorage()
   }, [ready, refreshStorage])
 
+  /**
+   * Scroll the page area (and only it) to a section. scrollIntoView would also scroll the app's
+   * frame when the section can't reach the top, pushing the title bar and sidebar out of reach.
+   */
+  const goTo = useCallback((id: string) => {
+    const main = document.getElementById('main-content')
+    const section = document.getElementById(id)
+    if (!main || !section) return
+    setActive(id)
+    goingTo.current = id
+    const release = () => {
+      goingTo.current = null
+    }
+    main.addEventListener('scrollend', release, { once: true })
+    window.setTimeout(release, 1200) // no scroll happens when it's already there
+    main.scrollTo({ top: main.scrollTop + section.getBoundingClientRect().top - main.getBoundingClientRect().top - 24, behavior: 'smooth' })
+  }, [])
+
   useEffect(() => {
-    if (!hash || !prefs) return
-    document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [hash, prefs])
+    if (hash && prefs) goTo(hash.slice(1))
+  }, [hash, prefs, goTo])
+
+  // Highlight the section at the top of the page while scrolling (the last one at the very bottom).
+  useEffect(() => {
+    const main = document.getElementById('main-content')
+    if (!main || !prefs) return
+    const onScroll = () => {
+      if (goingTo.current) return
+      if (main.scrollTop + main.clientHeight >= main.scrollHeight - 4) {
+        setActive(SECTIONS[SECTIONS.length - 1].id)
+        return
+      }
+      const top = main.getBoundingClientRect().top
+      let current = SECTIONS[0].id
+      for (const s of SECTIONS) {
+        const el = document.getElementById(s.id)
+        if (el && el.getBoundingClientRect().top - top <= 120) current = s.id
+      }
+      setActive(current)
+    }
+    main.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => main.removeEventListener('scroll', onScroll)
+  }, [prefs])
 
   if (!prefs) {
     return (
@@ -253,9 +298,15 @@ ${text}`)
           <a
             key={s.id}
             href={`#/settings#${s.id}`}
+            aria-current={active === s.id ? 'location' : undefined}
+            onClick={(e) => {
+              e.preventDefault()
+              navigate(`/settings#${s.id}`, { replace: true })
+              goTo(s.id)
+            }}
             className={clsx(
               'h-8 px-2.5 rounded-md flex items-center text-[13px] transition-colors',
-              hash === `#${s.id}` ? 'bg-raised text-ink font-medium' : 'text-muted hover:text-ink hover:bg-raised/60',
+              active === s.id ? 'bg-raised text-ink font-medium' : 'text-muted hover:text-ink hover:bg-raised/60',
             )}
           >
             {s.label}
