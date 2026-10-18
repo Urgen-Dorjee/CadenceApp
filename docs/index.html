@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cadence: free YouTube downloader that splits jukeboxes into songs</title>
+  <meta name="description" content="Cadence is a free, open-source YouTube downloader for Windows, macOS and Linux. It splits jukeboxes, movie albums and singer collections into separate, tagged songs, and saves whole videos, playlists and courses with subtitles and chapters.">
+  <link rel="canonical" href="https://urgen-dorjee.github.io/CadenceApp/">
+  <link rel="icon" href="icon.png">
+  <meta name="theme-color" content="#12141a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Cadence: split YouTube jukeboxes into songs, save whole videos">
+  <meta property="og:description" content="Free, open-source desktop app. Finds where every song starts, cuts in the gaps, tags and files them. Also saves whole videos and courses.">
+  <meta property="og:url" content="https://urgen-dorjee.github.io/CadenceApp/">
+  <meta property="og:image" content="https://urgen-dorjee.github.io/CadenceApp/social-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Cadence",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Windows 10, Windows 11, macOS, Linux",
+    "description": "Free, open-source YouTube downloader that splits jukeboxes, movie albums and singer collections into tagged songs, and saves whole videos, playlists and courses with subtitles and chapters.",
+    "url": "https://urgen-dorjee.github.io/CadenceApp/",
+    "downloadUrl": "https://github.com/Urgen-Dorjee/CadenceApp/releases/latest",
+    "image": "https://urgen-dorjee.github.io/CadenceApp/social-preview.png",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Urgen Dorjee", "url": "https://wanderingwhispers.com" }
+  }
+  </script>
+  <style>
+    :root {
+      --canvas: #12141a; --surface: #181b21; --raised: #1f232b; --line: #272b35; --ink: #eceef3; --muted: #9ca2b1;
+      --accent: #2dd4bf; --accent-ink: #031c19; --radius: 14px;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --canvas: #f6f7f9; --surface: #ffffff; --raised: #eef0f4; --line: #e2e5eb; --ink: #101217; --muted: #525969; --accent: #0d9488; --accent-ink: #ffffff; }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 16px/1.6 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+    header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--canvas) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); font-size: 18px; }
+    .brand img { width: 28px; height: 28px; border-radius: 7px; }
+    nav { display: flex; gap: 20px; margin-left: auto; font-size: 14px; }
+    nav a { color: var(--muted); }
+    nav a:hover { color: var(--ink); text-decoration: none; }
+    .hero { padding: 72px 0 40px; text-align: center; }
+    .badge { display: inline-block; font-size: 13px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 4px 12px; border-radius: 999px; }
+    h1 { font-size: clamp(32px, 5.5vw, 56px); line-height: 1.1; letter-spacing: -0.02em; margin: 20px auto 16px; max-width: 900px; }
+    .lead { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 720px; margin: 0 auto 32px; }
+    .downloads { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+    .btn:hover { border-color: var(--accent); text-decoration: none; }
+    .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    .small { font-size: 13px; color: var(--muted); margin-top: 14px; }
+    .shot { margin: 48px auto 0; border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.35); max-width: 1040px; }
+    .shot img { display: block; width: 100%; height: auto; }
+    section { padding: 64px 0; border-top: 1px solid var(--line); }
+    h2 { font-size: clamp(26px, 3.5vw, 36px); letter-spacing: -0.01em; margin: 0 0 12px; }
+    .sub { color: var(--muted); margin: 0 0 36px; max-width: 720px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+    .card h3 { margin: 0 0 8px; font-size: 17px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    .split { display: grid; grid-template-columns: 1fr 1.25fr; gap: 40px; align-items: center; }
+    .split.flip { grid-template-columns: 1.25fr 1fr; }
+    .split.flip .text { order: 2; }
+    .split img { width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--line); }
+    ul.ticks { list-style: none; padding: 0; margin: 16px 0 0; }
+    ul.ticks li { padding-left: 26px; position: relative; margin: 8px 0; color: var(--muted); }
+    ul.ticks li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+    ol.steps { counter-reset: step; list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    ol.steps li { counter-increment: step; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; color: var(--muted); }
+    ol.steps li::before { content: counter(step); display: inline-flex; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 700; align-items: center; justify-content: center; margin-bottom: 10px; }
+    ol.steps strong { display: block; color: var(--ink); margin-bottom: 4px; }
+    details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; }
+    summary { cursor: pointer; font-weight: 600; }
+    details p { color: var(--muted); margin: 10px 0 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 15px; }
+    td, th { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+    code { background: var(--raised); padding: 2px 6px; border-radius: 6px; font-size: 14px; }
+    footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+    @media (max-width: 760px) {
+      nav { display: none; }
+      .split, .split.flip { grid-template-columns: 1fr; }
+      .split.flip .text { order: 0; }
+      .hero { padding-top: 48px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="#"><img src="icon.png" alt="" width="28" height="28">Cadence</a>
+      <nav aria-label="Page">
+        <a href="#music">Music</a><a href="#video">Video</a><a href="#how">How it works</a><a href="#download">Download</a><a href="#faq">FAQ</a>
+        <a href="https://github.com/Urgen-Dorjee/CadenceApp">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero wrap">
+      <span class="badge">Free and open source · Windows, macOS, Linux</span>
+      <h1>Split YouTube jukeboxes into songs. Save whole videos.</h1>
+      <p class="lead">Cadence is a free YouTube downloader for your music and your courses. Paste a two-hour jukebox or a movie album: it finds where every song starts, cuts in the gap between songs, then tags and files each one with its cover art.</p>
+      <div class="downloads">
+        <a class="btn primary" href="https://github.com/Urgen-Dorjee/CadenceApp/releases/latest">Download for Windows</a>
+        <a class="btn" href="https://github.com/Urgen-Dorjee/CadenceApp/releases/latest">macOS</a>
+        <a class="btn" href="https://github.com/Urgen-Dorjee/CadenceApp/releases/latest">Linux</a>
+      </div>
+      <p class="small">No account, no ads, no tracking. MIT license. <a href="https://github.com/Urgen-Dorjee/CadenceApp">Source on GitHub</a>.</p>
+      <div class="shot"><img src="screenshots/review.png" width="1360" height="880" alt="Cadence splitting a 23-minute movie album jukebox into four named songs, each with its singer"></div>
+    </div>
+
+    <section id="music">
+      <div class="wrap split">
+        <div class="text">
+          <h2>Jukeboxes become a tagged music library</h2>
+          <p class="sub">Most YouTube downloaders give you one long file. Cadence gives you the songs.</p>
+          <ul class="ticks">
+            <li>Finds the songs from chapters, the description or comments, or by listening for the gaps.</li>
+            <li>Cuts in the real silence between songs, so nothing is clipped and nothing spills over.</li>
+            <li>Names songs by their sound (AcoustID and MusicBrainz) when the video doesn't list them.</li>
+            <li>MP3, M4A, Opus, FLAC or the original audio, with album, year, track numbers, cover art and lyrics.</li>
+            <li>Files singer collections under Artists and movie albums under Albums, with a playlist for each.</li>
+          </ul>
+        </div>
+        <img src="screenshots/library.png" width="1360" height="880" loading="lazy" alt="The Cadence music library listing the songs saved from a jukebox">
+      </div>
+    </section>
+
+    <section id="video">
+      <div class="wrap split flip">
+        <div class="text">
+          <h2>Whole videos, playlists and courses</h2>
+          <p class="sub">Switch to Video to keep lectures, documentaries and talks.</p>
+          <ul class="ticks">
+            <li>Choose the quality (up to 4K) and see the file size before downloading. MP4 plays everywhere; MKV keeps everything.</li>
+            <li>Subtitles in your languages, inside the video or as .srt files, plus chapters and the thumbnail.</li>
+            <li>Courses download in order into their own folder, skipping videos you already have.</li>
+            <li>A built-in player that remembers where you stopped and plays a course in order.</li>
+          </ul>
+        </div>
+        <img src="screenshots/player.jpg" width="1360" height="880" loading="lazy" alt="Cadence's built-in video player showing a lecture with subtitles and a list of chapters">
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2>How it works</h2>
+        <p class="sub">Three steps, and Cadence remembers what you saved: paste the same link again and it carries on where you left off.</p>
+        <ol class="steps">
+          <li><strong>Paste a link</strong>A video, a playlist, or a file from your computer.</li>
+          <li><strong>Check the songs</strong>Listen to each cut, drag it if needed, and rename anything. Unsure cuts are marked "Check".</li>
+          <li><strong>Save</strong>Songs are tagged, given cover art and filed into your library.</li>
+        </ol>
+        <div class="grid" style="margin-top:16px">
+          <div class="card"><h3>Your library, organised</h3><p>Browse by album, singer or song, with a player, queue, lyrics and a sleep timer. Edit tags in place.</p></div>
+          <div class="card"><h3>Private by design</h3><p>Everything runs on your computer. Only what each feature needs leaves it, such as a sound fingerprint for naming songs.</p></div>
+          <div class="card"><h3>Safe with your data</h3><p>Daily backups of your history and settings, and every installer is built in public from the source on GitHub.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="download">
+      <div class="wrap">
+        <h2>Download</h2>
+        <p class="sub">Every release is on <a href="https://github.com/Urgen-Dorjee/CadenceApp/releases/latest">GitHub Releases</a>. Installed copies update themselves on Windows and Linux.</p>
+        <table>
+          <thead><tr><th>Computer</th><th>File</th></tr></thead>
+          <tbody>
+            <tr><td>Windows 10 and 11</td><td><code>Cadence-Setup-&lt;version&gt;.exe</code></td></tr>
+            <tr><td>Mac with Apple Silicon (M1 and later)</td><td><code>Cadence-&lt;version&gt;-mac-AppleSilicon.dmg</code></td></tr>
+            <tr><td>Mac with Intel</td><td><code>Cadence-&lt;version&gt;-mac-Intel.dmg</code></td></tr>
+            <tr><td>Linux</td><td><code>.AppImage</code>, or <code>.deb</code> for Ubuntu and Debian</td></tr>
+          </tbody>
+        </table>
+        <p class="small">The installers aren't code-signed yet. On Windows, if you see "Windows protected your PC", click <em>More info → Run anyway</em>. On a Mac, open <em>System Settings → Privacy &amp; Security → Open Anyway</em>. You can check any download against <code>SHA256SUMS.txt</code> and its GitHub build attestation.</p>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <h2>Questions</h2>
+        <details><summary>Is Cadence really free?</summary><p>Yes. It's open source under the MIT license, with no ads, accounts or paid tiers.</p></details>
+        <details><summary>What makes it different from other YouTube downloaders?</summary><p>It splits long videos made of many songs (jukeboxes, movie albums, singer collections) into separate, named, tagged songs, and files them into a music library. It also saves whole videos and courses with subtitles and chapters, and plays them.</p></details>
+        <details><summary>Does it need my YouTube account?</summary><p>No. It's only needed for age-restricted videos, or if YouTube asks you to confirm you're not a bot. Then Cadence can use the sign-in of a browser you're already signed in to.</p></details>
+        <details><summary>Can it split files I already have?</summary><p>Yes. Open an audio or video file from your computer and Cadence splits it the same way. Your file is never changed.</p></details>
+        <details><summary>Is downloading from YouTube allowed?</summary><p>Only download videos you own or have permission to download, and respect YouTube's terms and the creators' rights.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Cadence · MIT license · Made by <a href="https://wanderingwhispers.com">Urgen Dorjee</a></span>
+      <span><a href="https://github.com/Urgen-Dorjee/CadenceApp">GitHub</a> · <a href="https://github.com/Urgen-Dorjee/CadenceApp/issues">Report a problem</a> · <a href="https://github.com/Urgen-Dorjee/CadenceApp/blob/master/CONTRIBUTING.md">Contribute</a></span>
+    </div>
+  </footer>
+</body>
+</html>

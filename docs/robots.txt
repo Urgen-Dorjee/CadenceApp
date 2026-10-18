@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://urgen-dorjee.github.io/CadenceApp/sitemap.xml
