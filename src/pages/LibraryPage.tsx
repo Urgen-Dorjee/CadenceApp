@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { ArrowLeft, FolderOpen, ListEnd, ListPlus, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Send, Shuffle } from 'lucide-react'
+import { ArrowLeft, FolderOpen, ListEnd, ListPlus, Loader2, Music2, Pause, Pencil, Play, RefreshCw, Search, Send, Shuffle, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, type LibrarySong, type TagChanges } from '../services/api'
 import { useAppStore } from '../stores/appStore'
@@ -187,6 +187,8 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
   const [scanning, setScanning] = useState(false)
   const [editing, setEditing] = useState<LibrarySong[] | null>(null)
   const [sending, setSending] = useState<LibrarySong[] | null>(null)
+  // Only these files (lower-cased paths), when opened from "Show them" for a link pasted again.
+  const [only, setOnly] = useState<Set<string> | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -198,6 +200,12 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
       setQuery('')
       setView(intent.open.kind === 'artist' ? 'artists' : 'albums')
       setOpen(intent.open)
+    }
+    if (intent.only) {
+      setQuery('')
+      setOpen(null)
+      setView('songs')
+      setOnly(new Set(intent.only.map((p) => p.toLowerCase())))
     }
     if (intent.edit) setEditing(intent.edit)
     if (intent.send) setSending(intent.send)
@@ -236,7 +244,10 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
     }
   }
 
-  const filtered = useMemo(() => sortSongs(filterSongs(songs ?? [], query), sort), [songs, query, sort])
+  const filtered = useMemo(
+    () => sortSongs(filterSongs((songs ?? []).filter((s) => !only || only.has(s.path.toLowerCase())), query), sort),
+    [songs, query, sort, only],
+  )
   const artists = useMemo(() => groupSongs(filtered, 'artist'), [filtered])
   const albums = useMemo(() => groupSongs(filtered, 'album'), [filtered])
   const openGroup = open ? (open.kind === 'artist' ? artists : albums).find((g) => g.key === open.key) : undefined
@@ -322,6 +333,11 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
           <label htmlFor="library-search" className="sr-only">Search songs, singers or albums</label>
           <input id="library-search" className="field pl-8" placeholder="Search songs, singers or albums" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
+        {only && (
+          <button className="h-7 px-3 rounded-full text-xs border bg-accent/15 text-accent border-accent/40 inline-flex items-center gap-1.5" onClick={() => setOnly(null)}>
+            Songs from that video <X size={12} aria-label="Show all songs" />
+          </button>
+        )}
         {view === 'songs' && (
           <select className="field w-40" value={sort} onChange={(e) => setSort(e.target.value as LibrarySort)} aria-label="Sort songs">
             <option value="artist">Sort by singer</option>

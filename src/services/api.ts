@@ -166,6 +166,17 @@ export interface LibraryVideo {
   position: number
 }
 
+/** What was done with a video link before (POST /links/history). */
+export interface LinkHistory {
+  video_id: string | null
+  /** Splits and video downloads of this video still in the list. */
+  jobs: { id: string; kind: 'music' | 'video'; status: Job['status']; saved: number; songs: number }[]
+  /** Songs saved from it whose files are still there. */
+  songs: { path: string; title: string; saved_at: number }[]
+  /** Copies of it downloaded whole. */
+  videos: { path: string; height: number; ext: string }[]
+}
+
 /** What the built-in player shows besides the picture. */
 export interface PlayerDetails {
   duration: number
@@ -215,6 +226,7 @@ export const api = {
       `/api/jobs/${id}/tracklist`,
       { text },
     ),
+  linkHistory: (url: string) => request<LinkHistory>('POST', '/api/links/history', { url }),
   expandLink: (url: string) => request<ListedLink>('POST', '/api/links/expand', { url }),
   setCover: (id: string, path: string) => request<Job>('POST', `/api/jobs/${id}/cover`, { path }),
   resetCover: (id: string) => request<Job>('DELETE', `/api/jobs/${id}/cover`),

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ClipboardPaste, Loader2, Scissors, ListMusic, FolderTree, FolderOpen, Link2, FileAudio, Download, Music2, Video, Gauge, Captions, ListVideo } from 'lucide-react'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
-import { api } from '../services/api'
+import { api, type LinkHistory } from '../services/api'
 import { useAppStore } from '../stores/appStore'
 import { sortedJobs, useJobsStore } from '../stores/jobsStore'
 import { usePrefsStore } from '../stores/prefsStore'
@@ -12,6 +12,8 @@ import VideoJobCard from '../components/video/VideoJobCard'
 import VideoOptionsPanel from '../components/video/VideoOptionsPanel'
 import VideoReadyDialog from '../components/video/VideoReadyDialog'
 import PlaylistDialog, { type PlaylistChoice } from '../components/PlaylistDialog'
+import SavedBeforeDialog from '../components/SavedBeforeDialog'
+import { useVideoPlayer } from '../stores/videoPlayerStore'
 import { newLinks, readyToSave, youtubeLinks } from '../lib/batch'
 import { linkKind } from '../lib/playlists'
 import { isVideoJob, videoDefaults, type Collection, type VideoOptions } from '../types/job'
@@ -119,6 +121,7 @@ function SaveToRow({ mode }: { mode: Mode }) {
 }
 
 export default function HomePage() {
+  const navigate = useNavigate()
   const [url, setUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [clipboardLinks, setClipboardLinks] = useState<string[]>([])
@@ -206,9 +209,74 @@ export default function HomePage() {
     setClipboardLinks([])
   }
 
+  const [savedBefore, setSavedBefore] = useState<{ link: string; history: LinkHistory } | null>(null)
+  const [savedVideo, setSavedVideo] = useState<string | null>(null)
+  const openPlayer = useVideoPlayer((s) => s.open)
+
+  /**
+   * One video link seen before: carry on with it rather than start over. Returns true when
+   * handled (opened its split or download, or asked what to do), false to download it as usual.
+   */
+  const carryOn = async (link: string): Promise<boolean> => {
+    let history: LinkHistory
+    try {
+      history = await api.linkHistory(link)
+    } catch {
+      return false
+    }
+    const kind = video ? 'video' : 'music'
+    const job = history.jobs.find((j) => j.kind === kind && j.status !== 'failed' && j.status !== 'cancelled')
+    setSavedVideo(null)
+    if (!video) {
+      if (job) {
+        setUrl('')
+        if (job.status === 'review' || job.status === 'completed') {
+          navigate(`/jobs/${job.id}`)
+          toast(job.status === 'completed' && job.saved < job.songs
+            ? `You split this video before: ${job.saved} of ${job.songs} songs are saved. Pick up where you left off.`
+            : 'You split this video before. Here it is.')
+        } else {
+          navigate('/downloads')
+          toast('That video is already being split. Follow it in Downloads.')
+        }
+        return true
+      }
+      if (history.songs.length) {
+        setUrl('')
+        setSavedBefore({ link, history })
+        return true
+      }
+      return false
+    }
+    if (job && job.status !== 'completed') {
+      setUrl('')
+      navigate('/downloads')
+      toast('That video is already downloading. Follow it in Downloads.')
+      return true
+    }
+    const copy = history.videos[0]
+    if (copy && prefs?.video_ask === false) {
+      setUrl('')
+      toast('You downloaded this video before. Playing it.')
+      openPlayer(copy.path)
+      return true
+    }
+    // "Video ready" offers to play the copy, or to download it again in another quality.
+    setSavedVideo(copy?.path ?? null)
+    return false
+  }
+
   const startLinks = async (links: string[]) => {
     if (!links.length) {
       toast.error('Paste a YouTube video or playlist link.')
+      return
+    }
+    if (links.length === 1 && linkKind(links[0]) === 'video') {
+      if (await carryOn(links[0])) return
+      if (video) return startVideos(links)
+      await startAll([{ url: links[0] }])
+      setUrl('')
+      setClipboardLinks([])
       return
     }
     if (video) {
@@ -448,12 +516,30 @@ export default function HomePage() {
           initial={options}
           folder={prefs.video_dir}
           onClose={() => setVideoLink(null)}
+          savedPath={savedVideo}
+          onPlay={(path) => {
+            setVideoLink(null)
+            openPlayer(path)
+          }}
           onStart={async (link, chosen) => {
             useJobsStore.getState().upsert(await api.createVideoJob(link, chosen))
             toast.success('Downloading. Follow it in Downloads.')
           }}
         />
       )}
+      <SavedBeforeDialog
+        history={savedBefore?.history ?? null}
+        onClose={() => setSavedBefore(null)}
+        onShow={(paths) => {
+          setSavedBefore(null)
+          navigate('/library', { state: { only: paths } })
+        }}
+        onSplitAgain={async () => {
+          const link = savedBefore?.link
+          setSavedBefore(null)
+          if (link) await startAll([{ url: link }])
+        }}
+      />
       <PlaylistDialog
         link={playlistQueue[0] ?? null}
         onClose={() => setPlaylistQueue((queue) => queue.slice(1))}

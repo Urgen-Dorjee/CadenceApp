@@ -44,7 +44,7 @@ export default function SaveAgainDialog({
               <span>
                 <span className="block text-[13px] font-medium">Replace them</span>
                 <span className="block text-xs text-muted">
-                  The songs saved last time are overwritten. Any that are no longer in this split go to the {trashName()}.
+                  Songs you save again are overwritten; the old file of a renamed song goes to the {trashName()}. Songs you left unticked are kept.
                 </span>
               </span>
             </button>

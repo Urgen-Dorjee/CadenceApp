@@ -128,3 +128,72 @@ def test_no_playlist_for_one_song_or_when_turned_off(source, library_dir):
     job_id = _job(source)
     _save(job_id, ["A", "B"], replace=False)
     assert get_store().get(job_id)["playlist"] == ""
+
+
+def _three(source: str) -> str:
+    store = get_store()
+    job = store.create("https://www.youtube.com/watch?v=threesongs1")
+    store.update(
+        job["id"], status="review", sources=[{"id": "threesongs1", "path": source, "duration": 20}],
+        tracks=[make_track(title=t, start=s, end=s + 6, origin="chapters", source_id="threesongs1") for t, s in (("A", 0), ("B", 7), ("C", 14))],
+        collection={"type": "album", "name": "Album", "album": "Album"},
+    )
+    return job["id"]
+
+
+def _save_only(job_id: str, keep: set[str], replace: bool = False) -> dict:
+    store = get_store()
+    job = store.get(job_id)
+    store.update(job_id, tracks=[dict(t, include=t["title"] in keep) for t in job["tracks"]], status="review")
+    asyncio.run(pipeline._export(job_id, replace_previous=replace))
+    job = store.get(job_id)
+    assert job["status"] == "completed", job["error"]
+    return job
+
+
+def test_saving_the_rest_later_keeps_the_first_songs_and_their_numbering(source, library_dir):
+    lib, trashed = library_dir
+    job_id = _three(source)
+    first = _save_only(job_id, {"A", "B"})
+    later = _save_only(job_id, {"C"})
+    names = sorted(os.path.basename(o["path"]) for o in later["outputs"])
+    assert names == ["01 - A.flac", "02 - B.flac", "03 - C.flac"]   # C is 03, not a second 01
+    assert all(os.path.isfile(o["path"]) for o in later["outputs"]) and not trashed
+    with open(later["playlist"], encoding="utf-8") as f:
+        assert [line for line in f.read().splitlines() if line.endswith(".flac")] == names
+    assert later["playlist"] == first["playlist"]                     # replaced, not a second "(2)" playlist
+    assert [os.path.basename(p) for p in trashed] == []
+    assert {o["path"] for o in first["outputs"]} < {o["path"] for o in later["outputs"]}
+
+
+def test_replacing_never_bins_songs_that_were_only_unticked(source, library_dir):
+    lib, trashed = library_dir
+    job_id = _three(source)
+    _save_only(job_id, {"A", "B", "C"})
+    again = _save_only(job_id, {"A"}, replace=True)
+    assert not trashed and len(again["outputs"]) == 3
+
+
+def test_saved_songs_remember_their_video_and_part(source, library_dir):
+    job_id = _three(source)
+    _save_only(job_id, {"A", "B"})
+    rows = [r for r in get_store().saved_songs(["threesongs1"]) if r["job_id"] == job_id]
+    assert [(r["title"], r["start"], r["end"]) for r in rows] == [("A", 0, 6), ("B", 7, 13)]
+
+
+def test_pasting_a_link_again_shows_what_was_saved_from_it(source, library_dir):
+    from fastapi.testclient import TestClient
+    from main import app
+
+    job_id = _three(source)
+    _save_only(job_id, {"A", "B"})
+    base = f"http://127.0.0.1:{settings.backend_port}"
+    auth = {"host": f"127.0.0.1:{settings.backend_port}", "x-cadence-token": "test-token"}
+    with TestClient(app, base_url=base) as client:
+        history = client.post("/api/links/history", headers=auth, json={"url": "https://youtu.be/threesongs1"}).json()
+        assert history["video_id"] == "threesongs1"
+        mine = next(j for j in history["jobs"] if j["id"] == job_id)
+        assert mine == {"id": job_id, "kind": "music", "status": "completed", "saved": 2, "songs": 3}
+        assert {"01 - A.flac", "02 - B.flac"} <= {os.path.basename(s["path"]) for s in history["songs"]}
+        nothing = client.post("/api/links/history", headers=auth, json={"url": "https://www.youtube.com/watch?v=neverseen12"}).json()
+        assert nothing["jobs"] == [] and nothing["songs"] == []

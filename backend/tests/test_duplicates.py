@@ -75,3 +75,18 @@ def test_own_files_match_regardless_of_case_on_windows():
 def test_placeholder_names_are_never_duplicates():
     t = track("Track 3", end=337)
     assert find([t], [song("Track 3", "Romantic Love Songs", 330)]) == {}
+
+
+def test_a_part_of_a_video_saved_before_matches_whatever_it_is_called_now(tmp_path):
+    from services.duplicates import find_same_part
+
+    saved_file = tmp_path / "01 - Pehla Nasha.mp3"
+    saved_file.write_bytes(b"x")
+    saved = [{"path": str(saved_file), "video_id": "vid", "start": 100.0, "end": 400.0, "title": "Pehla Nasha"},
+             {"path": str(tmp_path / "gone.mp3"), "video_id": "vid", "start": 400.0, "end": 700.0, "title": "Gone"}]
+    renamed = dict(make_track(title="Track 2", start=103, end=398, origin="silence", source_id="vid"), id="t2")
+    other_part = dict(make_track(title="Track 3", start=400, end=700, origin="silence", source_id="vid"), id="t3")
+    other_video = dict(make_track(title="Track 2", start=103, end=398, origin="silence", source_id="else"), id="t4")
+    found = find_same_part([renamed, other_part, other_video], saved, [{"path": str(saved_file), "title": "Pehla Nasha (Remastered)", "artist": "Udit", "album": ""}])
+    assert list(found) == ["t2"]                      # the deleted file and the other video don't count
+    assert found["t2"][0]["title"] == "Pehla Nasha (Remastered)"

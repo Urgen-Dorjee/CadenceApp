@@ -11,8 +11,12 @@ Titles saved as "3.Every Breath You Take - The Police" (a number, and the singer
 after a dash) also match "Every Breath You Take".
 
 Placeholder names like "Track 3" never match: every unnamed song is called that.
+
+Songs saved from the same part of the same YouTube video match whatever they are called
+now (find_same_part), so renaming a song, or a placeholder name, doesn't hide it.
 """
 
+import os
 import re
 import unicodedata
 from typing import Any
@@ -93,4 +97,38 @@ def find(tracks: list[dict[str, Any]], songs: list[dict[str, Any]], exclude_path
         matches = [s for s in candidates if _same_song(track, s)]
         if matches:
             found[track["id"]] = [{"path": s["path"], "title": s["title"], "artist": s["artist"], "album": s["album"]} for s in matches]
+    return found
+
+
+SAME_PART_OVERLAP = 0.5  # of the shorter of the two songs
+
+
+def _overlap(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
+    shorter = min(a_end - a_start, b_end - b_start)
+    if shorter <= 0:
+        return 0.0
+    return max(0.0, min(a_end, b_end) - max(a_start, b_start)) / shorter
+
+
+def find_same_part(
+    tracks: list[dict[str, Any]], saved: list[dict[str, Any]], songs: list[dict[str, Any]], exclude_paths: list[str] = (),
+) -> dict[str, list[dict[str, Any]]]:
+    """{track id: [library songs]} for tracks whose part of the video was saved before (a
+    saved_songs row from the same video covering most of it) and whose file is still there.
+    The library's current tags are shown when it knows the file."""
+    excluded = {same_file_key(p) for p in exclude_paths}
+    tags = {same_file_key(s["path"]): s for s in songs}
+    found: dict[str, list[dict[str, Any]]] = {}
+    for track in tracks:
+        for row in saved:
+            key = same_file_key(row["path"])
+            if (row["video_id"] != track.get("source_id") or key in excluded
+                    or _overlap(track["start"], track["end"], row["start"], row["end"]) < SAME_PART_OVERLAP
+                    or not os.path.isfile(row["path"])):
+                continue
+            song = tags.get(key, {})
+            found.setdefault(track["id"], []).append({
+                "path": row["path"], "title": song.get("title") or row["title"],
+                "artist": song.get("artist", ""), "album": song.get("album", ""),
+            })
     return found

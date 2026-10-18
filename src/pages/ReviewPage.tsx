@@ -126,6 +126,10 @@ export default function ReviewPage() {
     `Already in your library: ${matches.map((m) => [m.artist, m.title].filter(Boolean).join(' - ') + (m.album ? ` (${m.album})` : '')).join('; ')}`
 
   const included = tracks.filter((t) => t.include)
+  // Songs of this split already saved; when only new ones are ticked, saving just adds them.
+  const savedIds = useMemo(() => new Set((job?.outputs ?? []).map((o) => o.track_id)), [job?.outputs])
+  const unsaved = tracks.filter((t) => !savedIds.has(t.id))
+  const resaving = included.some((t) => savedIds.has(t.id))
   const flagged = tracks.filter(needsCheck).length
   const showArtist = collection.type !== 'artist'
 
@@ -497,9 +501,9 @@ export default function ReviewPage() {
     }
   }
 
-  /** Save the songs. A split saved before asks first whether to replace those songs. */
+  /** Save the songs. Saving songs saved before asks first whether to replace them; new ones are just added. */
   const onSaveClick = () => {
-    if (job?.status === 'completed' && job.outputs.length) setSaveAgainOpen(true)
+    if (job?.status === 'completed' && resaving) setSaveAgainOpen(true)
     else exportSongs(false)
   }
 
@@ -610,7 +614,9 @@ export default function ReviewPage() {
               title={audioRemoved ? 'The downloaded audio was removed after saving' : undefined}
             >
               {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
-              {job.status === 'completed' ? 'Save again' : `Save ${included.length} song${included.length === 1 ? '' : 's'}`}
+              {job.status === 'completed'
+                ? resaving ? 'Save again' : `Save ${included.length} more song${included.length === 1 ? '' : 's'}`
+                : `Save ${included.length} song${included.length === 1 ? '' : 's'}`}
             </button>
           </div>
         )}
@@ -770,6 +776,20 @@ export default function ReviewPage() {
               {included.length} of {tracks.length} will be saved
             </span>
           </div>
+          {job.status === 'completed' && savedIds.size > 0 && unsaved.length > 0 && !exporting && (
+            <div className="mx-4 mb-2 flex items-center gap-3 rounded-md border border-line bg-raised/60 px-3 py-2" role="status">
+              <Library size={15} className="text-accent shrink-0" aria-hidden="true" />
+              <p className="flex-1 text-[13px]">
+                {savedIds.size} of {tracks.length} songs are saved. {unsaved.length === 1 ? '1 isn’t' : `${unsaved.length} aren’t`} yet.
+              </p>
+              <button
+                className="btn-secondary h-7 px-2.5"
+                onClick={() => edit((t) => t.map((x) => ({ ...x, include: !savedIds.has(x.id) })))}
+              >
+                Select the {unsaved.length === 1 ? 'one' : unsaved.length} remaining
+              </button>
+            </div>
+          )}
           {stillSkipped.length > 0 && !exporting && (
             <div className="mx-4 mb-2 flex items-center gap-3 rounded-md border border-line bg-raised/60 px-3 py-2" role="status">
               <Library size={15} className="text-accent shrink-0" aria-hidden="true" />
@@ -838,6 +858,7 @@ export default function ReviewPage() {
                     hasCutBefore={index > 0 && canMergeWithNext(tracks, index - 1)}
                     showArtist={showArtist}
                     inLibrary={duplicates[track.id] ? describeMatch(duplicates[track.id]) : undefined}
+                    saved={savedIds.has(track.id)}
                     onChange={onChange}
                     onStart={onStart}
                     onEnd={onEnd}

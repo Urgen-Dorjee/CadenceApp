@@ -579,23 +579,35 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
     job = store.get(job_id)
     if not job:
         return
-    # Songs saved last time that may be overwritten (only when the user chose to replace them).
-    previous = [o["path"] for o in job.get("outputs") or []] if replace_previous else []
-    if replace_previous and job.get("playlist"):
+    chosen = [t for t in job["tracks"] if t.get("include", True)]
+    chosen_ids = {t["id"] for t in chosen}
+    track_ids = {t["id"] for t in job["tracks"]}
+    earlier = list(job.get("outputs") or [])
+    # Songs saved before from songs not saved this time stay saved and listed ("save the rest").
+    carried = [o for o in earlier if o.get("track_id") in track_ids and o["track_id"] not in chosen_ids and os.path.isfile(o["path"])]
+    carried_ids = {o["track_id"] for o in carried}
+    # Songs saved last time that may be overwritten (only when the user chose to replace them):
+    # those saved again now, and those whose song was taken out of the split. Unticked ones stay.
+    previous = [o["path"] for o in earlier if o.get("track_id") not in carried_ids] if replace_previous else []
+    # The split's playlist is rewritten with all its saved songs, except when keeping both copies
+    # of songs saved again (the first copies keep their playlist).
+    keeping_both = not replace_previous and any(o.get("track_id") in chosen_ids for o in earlier)
+    if job.get("playlist") and not keeping_both:
         previous.append(job["playlist"])
     replaceable = frozenset(library.same_file_key(p) for p in previous)
+    # Numbered by place in the split, counting songs saved before, so a later save doesn't start at 01 again.
+    in_order = [t for t in job["tracks"] if t["id"] in chosen_ids or t["id"] in carried_ids]
+    number = {t["id"]: i for i, t in enumerate(in_order, start=1)}
     try:
         async with _export_slots:
             prefs = load_preferences()
             sources = {s["id"]: s for s in job["sources"]}
-            chosen = [t for t in job["tracks"] if t.get("include", True)]
             collection = job["collection"]
             root = job.get("destination") or prefs.library_dir
             outputs: list[dict[str, Any]] = []
-            entries: list[dict[str, Any]] = []  # for the playlist
             with_lyrics = 0
             lyrics_offline = False
-            await _update(job_id, status="exporting", progress=0, message="Saving songs", error=None, outputs=[])
+            await _update(job_id, status="exporting", progress=0, message="Saving songs", error=None, outputs=carried)
 
             # Pass 1 (only when needed): trim silent edges and measure loudness. The
             # album's ReplayGain needs every song measured before any is tagged.
@@ -647,7 +659,7 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                 _check_cancel(job_id)
                 source = sources[track["source_id"]]
                 fmt, muxer = formats[track["source_id"]]
-                rel = library.fit_path(root, library.relative_path(track, n, collection, prefs), fmt)
+                rel = library.fit_path(root, library.relative_path(track, number[track["id"]], collection, prefs), fmt)
                 dest = library.unique_path(os.path.join(root, f"{rel}.{fmt}"), replaceable)
                 if any(library.same_file_key(dest) == library.same_file_key(o["path"]) for o in outputs):
                     dest = library.unique_path(dest)  # two songs with the same name in this save
@@ -672,7 +684,7 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                         "album_artist": album_artist,
                         "album": collection.get("album") or collection.get("name") or "",
                         "year": collection.get("year") or "",
-                        "track": n, "total": len(chosen),
+                        "track": number[track["id"]], "total": len(in_order),
                     },
                     await cover_for(source),
                     replaygain,
@@ -694,19 +706,23 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
                             await asyncio.to_thread(lyrics.write_lrc, dest, found["synced"])
                         with_lyrics += 1
                 outputs.append({"track_id": track["id"], "title": track["title"], "path": dest})
-                entries.append({
-                    "path": dest, "title": track["title"], "duration": end - start,
-                    "artist": track.get("artist") or album_artist,
-                })
 
             folder = os.path.commonpath([os.path.dirname(o["path"]) for o in outputs]) if outputs else root
             await asyncio.to_thread(song_index.get_index().add_paths, [o["path"] for o in outputs])
+            # The playlist lists every saved song of the split in order, those saved before too.
+            saved_path = {o["track_id"]: o["path"] for o in carried + outputs}
+            album_artist = collection.get("artist") or ""
+            entries = [
+                {"path": saved_path[t["id"]], "title": t["title"], "duration": t["end"] - t["start"],
+                 "artist": t.get("artist") or album_artist}
+                for t in in_order if t["id"] in saved_path
+            ]
             playlist_file = ""
-            if prefs.write_playlist and len(outputs) > 1:
+            if prefs.write_playlist and len(entries) > 1:
                 target = library.unique_path(playlist.playlist_path(folder, collection), replaceable)
                 playlist_file = await asyncio.to_thread(playlist.write, target, entries)
             # Old songs this save didn't overwrite (renamed or left out) go to the Recycle Bin.
-            kept = {library.same_file_key(o["path"]) for o in outputs} | {library.same_file_key(playlist_file)}
+            kept = {library.same_file_key(o["path"]) for o in carried + outputs} | {library.same_file_key(playlist_file)}
             stale = [p for p in previous if library.same_file_key(p) not in kept and os.path.isfile(p)]
             # A replaced song's .lrc goes with it (only ones Cadence wrote: next to its own songs).
             stale += [lyrics.lrc_path(p) for p in stale if p.lower().endswith(tuple(f".{f}" for f in ("mp3", "m4a", "flac", "opus")))
@@ -714,13 +730,21 @@ async def _export(job_id: str, replace_previous: bool = False) -> None:
             if stale:
                 trashed = await asyncio.to_thread(_trash, stale)
                 await asyncio.to_thread(song_index.get_index().remove_paths, trashed)
+                await asyncio.to_thread(store.forget_saved_songs, trashed)
+            # Which part of which video each song is, so the link is recognised next time.
+            by_id = {t["id"]: t for t in chosen}
+            await asyncio.to_thread(store.record_saved_songs, [
+                {"path": o["path"], "video_id": by_id[o["track_id"]]["source_id"], "title": o["title"], "job_id": job_id,
+                 "start": by_id[o["track_id"]]["start"], "end": by_id[o["track_id"]]["end"]}
+                for o in outputs if not sources[by_id[o["track_id"]]["source_id"]].get("local")
+            ])
             sources_after = job["sources"]
             if not prefs.keep_downloads:
                 sources_after = await remove_downloads(job_id, job["sources"])
             # Remember the videos, so playlists and channels can show what was saved before.
             store.remember_saved_videos([(src["id"], src.get("title", "")) for src in job["sources"] if not src.get("local")])
             await _update(
-                job_id, status="completed", progress=100, outputs=outputs, sources=sources_after, playlist=playlist_file,
+                job_id, status="completed", progress=100, outputs=carried + outputs, sources=sources_after, playlist=playlist_file,
                 message=f"Saved {len(outputs)} song{'s' if len(outputs) != 1 else ''} to {folder}"
                 + (f" (lyrics for {with_lyrics})" if prefs.lyrics != "off" and not lyrics_offline else "")
                 + (" (lyrics skipped: couldn't reach LRCLIB)" if lyrics_offline else ""),

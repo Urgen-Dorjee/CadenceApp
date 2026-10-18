@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { clsx } from 'clsx'
-import { Download, ListVideo, Loader2, Video, X } from 'lucide-react'
+import { Download, ListVideo, Loader2, Play, Video, X } from 'lucide-react'
 import { api, type PlaylistDetails, type VideoDetails } from '../../services/api'
 import type { VideoOptions } from '../../types/job'
 import { formatDuration } from '../../lib/time'
@@ -124,12 +124,15 @@ function VideoChoices({ details, options, onChange }: { details: VideoDetails; o
  * with its file size, its subtitles and chapters; a playlist or course shows how many videos
  * it has and how many were saved before.
  */
-export default function VideoReadyDialog({ link, initial, folder, onClose, onStart }: {
+export default function VideoReadyDialog({ link, initial, folder, onClose, onStart, savedPath, onPlay }: {
   link: string | null
   initial: VideoOptions
   folder: string
   onClose: () => void
   onStart: (link: string, options: VideoOptions) => Promise<void>
+  /** A copy of this video downloaded before, which can be played instead. */
+  savedPath?: string | null
+  onPlay?: (path: string) => void
 }) {
   const [details, setDetails] = useState<VideoDetails | PlaylistDetails | null>(null)
   const [error, setError] = useState('')
@@ -227,6 +230,14 @@ export default function VideoReadyDialog({ link, initial, folder, onClose, onSta
                   </div>
                 </div>
               </div>
+              {savedPath && onPlay && (
+                <div className="flex items-center gap-3 rounded-md border border-line bg-raised/60 px-3 py-2" role="status">
+                  <p className="flex-1 text-[13px]">You downloaded this video before. Play it, or download it again in another quality.</p>
+                  <button className="btn-secondary h-7 px-2.5" onClick={() => onPlay(savedPath)}>
+                    <Play size={13} aria-hidden="true" /> Play
+                  </button>
+                </div>
+              )}
               <VideoChoices details={details} options={options} onChange={setOptions} />
             </>
           )}
