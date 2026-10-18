@@ -774,6 +774,9 @@ def friendly_error(e: Exception) -> str:
                 "YouTube sign-in (Settings → YouTube).")
     if "unsupported url" in lowered:
         return "That link isn't a YouTube video or playlist."
+    if "http error 429" in lowered or "too many requests" in lowered:
+        return ("YouTube is limiting downloads from your connection right now. Wait a few minutes, then use Try again. "
+                "Signing in (Settings → YouTube) also helps.")
     if "playlist does not exist" in lowered or "this playlist is private" in lowered:
         return "This playlist doesn't exist or is private."
     if "ffmpeg not found" in lowered:

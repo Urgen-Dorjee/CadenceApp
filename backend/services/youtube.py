@@ -19,6 +19,16 @@ class Cancelled(Exception):
     pass
 
 
+RETRY_WAIT_MAX_S = 30.0
+
+
+def retry_wait(n: int) -> float:
+    """Seconds to wait before retry number `n` (counting from 0): 1, 2, 4, 8... up to 30.
+    yt-dlp retries straight away by default, which only makes YouTube's rate limit worse.
+    yt-dlp calls it as `sleep_func(n=...)`, so the parameter must be named n."""
+    return min(RETRY_WAIT_MAX_S, 2.0 ** n)
+
+
 def _base_opts() -> dict[str, Any]:
     from config import load_preferences
 
@@ -27,6 +37,9 @@ def _base_opts() -> dict[str, Any]:
         "no_warnings": True,
         "noprogress": True,
         "js_runtimes": js_runtimes(),
+        # Wait longer between each retry of a download, a piece of one, or a page YouTube refused.
+        "extractor_retries": 3,
+        "retry_sleep_functions": {"http": retry_wait, "fragment": retry_wait, "extractor": retry_wait},
     }
     prefs = load_preferences()
     if prefs.cookies_from == "file" and prefs.cookies_file:
