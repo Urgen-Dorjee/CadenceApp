@@ -380,7 +380,7 @@ Unsigned installers work, but Windows SmartScreen shows "Windows protected your 
 | Saved songs | `Music/Cadence` in your home folder by default |
 
 - **"Sign in to confirm you're not a bot" or downloads failing:** YouTube changes often. Open **Settings → Updates** and update the YouTube downloader (yt-dlp), then restart Cadence.
-- **Age-restricted videos, or the bot check keeps coming back:** in **Settings → YouTube**, choose the browser you're signed in to YouTube with (Firefox works best; close Chrome, Edge or Brave first), or a `cookies.txt` file. A proxy can be set there too.
+- **Age-restricted videos, or the bot check keeps coming back:** in **Settings → YouTube**, click **Sign in to YouTube** and sign in once in Cadence's own window (it never touches your browser; the sign-in is kept in `<data folder>/youtube-cookies.txt` and **Sign out** removes it). If Google says the browser isn't secure, choose Firefox there instead, or a `cookies.txt` file. On Windows, Chrome, Edge and Brave lock their cookies so other apps can't read them. A proxy can be set there too.
 - **"FFmpeg not found" in development:** run `npm run setup:ffmpeg`.
 - **Identify by sound says fpcalc is missing:** run `npm run setup:chromaprint`.
 - **Reporting a problem:** **Settings → Updates → Copy diagnostics** copies versions, tool status, settings (keys and the proxy only as "set") and the end of the log, with your home folder hidden. Paste it into the issue.
