@@ -14,6 +14,8 @@ interface PythonManagerOptions {
   fpcalcPath: string | null
   /** Per-user data folder (database, settings, work files). */
   dataDir: string
+  /** Cadence's version (package.json), reported by the backend. */
+  appVersion?: string
 }
 
 const isWindows = process.platform === 'win32'
@@ -56,6 +58,7 @@ export class PythonManager {
       DENO_PATH: this.options.denoPath ?? '',
       FPCALC_PATH: this.options.fpcalcPath ?? '',
       CADENCE_DATA_DIR: this.options.dataDir,
+      ...(this.options.appVersion ? { CADENCE_VERSION: this.options.appVersion } : {}),
       PYTHONIOENCODING: 'utf-8',
       // Packaged: never write .pyc files inside the app, which would break its macOS code signature.
       ...(this.options.isPackaged ? { CADENCE_PACKAGED: '1', PYTHONDONTWRITEBYTECODE: '1' } : {}),

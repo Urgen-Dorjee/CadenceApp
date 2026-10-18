@@ -70,8 +70,8 @@ export function useBackend() {
 
     const start = async () => {
       try {
-        const { port, token } = await electron.getBackendInfo()
-        if (!port) return // backend not started yet; onBackendReady will call again
+        const { port, token, ready } = await electron.getBackendInfo()
+        if (!port || ready === false) return // still starting; onBackendReady will call again
         configureApi(port, token)
         const health = await api.health()
         useAppStore.getState().setReady({

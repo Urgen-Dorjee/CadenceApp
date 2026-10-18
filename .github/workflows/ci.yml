@@ -60,3 +60,25 @@ jobs:
       - name: Backend tests
         working-directory: backend
         run: python -m pytest -v
+
+      # The built app, clicked through by Playwright: starts, splits a file, plays a video...
+      - name: UI smoke tests
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          npm run build:frontend
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum -- npx playwright test -c e2e/playwright.config.ts
+          else
+            npx playwright test -c e2e/playwright.config.ts
+          fi
+
+      - name: Keep the UI test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-report-${{ matrix.os }}
+          path: |
+            e2e-report
+            e2e-results
+          if-no-files-found: ignore

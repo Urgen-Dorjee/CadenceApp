@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { readdirSync } from 'fs'
-import { join } from 'path'
-import { api, launch, makeTwoSongs, seedLecture, type Launched } from './app'
+import { readFileSync, readdirSync } from 'fs'
+import { basename, join } from 'path'
+import { ROOT, api, launch, makeTwoSongs, seedLecture, type Launched } from './app'
 
 let run: Launched
 
@@ -26,6 +26,9 @@ test('starts, connects to the audio engine and welcomes a new user', async () =>
   const prefs = await api<{ onboarded: boolean; library_dir: string }>(page, 'GET', '/api/preferences')
   expect(prefs.onboarded).toBe(true)
   expect(prefs.library_dir).toBe(run.musicDir)
+  // The audio engine reports the app's own version (package.json).
+  const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  expect((await api<{ text: string }>(page, 'GET', '/api/diagnostics')).text).toContain(`version ${version}`)
 })
 
 test('every page opens', async () => {
@@ -57,13 +60,13 @@ test('a file from the computer is split and its songs saved', async () => {
   await page.getByRole('button', { name: /^Save 2 songs$/ }).click()
   await expect.poll(async () => (await api<{ status: string }>(page, 'GET', `/api/jobs/${job.id}`)).status, { timeout: 60_000 }).toBe('completed')
   const saved = (await api<{ outputs: { path: string }[] }>(page, 'GET', `/api/jobs/${job.id}`)).outputs.map((o) => o.path)
-  expect(saved.map((p) => p.split(/[\/]/).pop())).toEqual(['01 - First Tone.mp3', '02 - Second Tone.mp3'])
+  expect(saved.map((p) => basename(p))).toEqual(['01 - First Tone.mp3', '02 - Second Tone.mp3'])
 })
 
 test('saved songs are in the library and play', async () => {
   const { page } = run
   await page.getByRole('link', { name: 'Library', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Songs', exact: true }).click()
+  await page.getByRole('tab', { name: 'Songs', exact: true }).click()
   await expect(page.getByText('Second Tone')).toBeVisible()
   await page.getByRole('button', { name: 'Play First Tone', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Pause' }).first()).toBeVisible()
@@ -73,20 +76,22 @@ test('saved songs are in the library and play', async () => {
 test('a video plays in the built-in player, with a way back that nothing covers', async () => {
   const { page } = run
   await page.getByRole('link', { name: 'Library', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Videos', exact: true }).click()
+  await page.getByRole('tab', { name: 'Videos', exact: true }).click()
   await page.getByRole('button', { name: 'Play Lecture 1' }).click()
   const video = page.locator('video')
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState >= 2 && !v.error)).toBe(true)
-  await expect(page.getByRole('dialog', { name: 'Video player' })).toContainText('Lecture 1')
+  // The player is a dialog named after the video.
+  const player = page.getByRole('dialog', { name: 'Lecture 1' })
+  await expect(player).toBeVisible()
   // The window's own buttons (Windows) or traffic lights (Mac) sit in the 40 px title bar.
-  const back = page.getByRole('button', { name: 'Back' })
+  const back = player.getByRole('button', { name: 'Back', exact: true })
   await page.mouse.move(300, 300)
   await expect(back).toBeVisible()
   expect((await back.boundingBox())!.y).toBeGreaterThanOrEqual(40)
   await page.getByRole('button', { name: 'Chapters' }).click()
   await expect(page.getByRole('complementary', { name: 'Chapters and course' })).toContainText('Main part')
   await back.click()
-  await expect(page.getByRole('dialog', { name: 'Video player' })).toBeHidden()
+  await expect(player).toBeHidden()
 })
 
 test('nothing went wrong along the way', async () => {

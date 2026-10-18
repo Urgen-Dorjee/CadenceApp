@@ -19,13 +19,13 @@ function python(): string {
   return existsSync(venv) ? venv : isWindows ? 'python' : 'python3'
 }
 
-/** Two 40-second "songs" (different tones) with 3 s of silence between them. */
+/** Two 100-second (Cadence never makes songs under 90 s) "songs" (different tones) with 3 s of silence between them. */
 export function makeTwoSongs(dir: string): string {
   const out = join(dir, 'two-songs.mp3')
   execFileSync(ffmpeg(), [
     '-v', 'error', '-y',
-    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=40', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono:d=3',
-    '-f', 'lavfi', '-i', 'sine=frequency=660:duration=40',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=100', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono:d=3',
+    '-f', 'lavfi', '-i', 'sine=frequency=660:duration=100',
     '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1', '-b:a', '128k', out,
   ])
   return out
@@ -81,7 +81,7 @@ export async function launch(setup?: (dirs: { dataDir: string; videoDir: string 
   })
   const page = await app.firstWindow()
   const problems: string[] = []
-  page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`))
+  page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()} (${m.location().url})`))
   page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
   // Chromium reports Content-Security-Policy violations as console errors. Reload once so the
   // first load is watched too.

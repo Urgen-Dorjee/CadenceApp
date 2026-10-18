@@ -26,7 +26,8 @@
     "setup:deno": "node scripts/download-deno.cjs",
     "setup:chromaprint": "node scripts/download-chromaprint.cjs",
     "release": "npm run build:backend && npm run build:frontend && electron-builder --publish always",
-    "lint": "eslint . --max-warnings 0 && cd backend && python -m ruff check ."
+    "lint": "eslint . --max-warnings 0 && cd backend && python -m ruff check .",
+    "test:ui": "npm run build:frontend && playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
