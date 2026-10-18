@@ -1,6 +1,8 @@
 # Cadence
 
-**Split YouTube jukeboxes, movie albums and singer collections into separate, tagged songs.**
+**A free, open-source YouTube downloader that splits jukeboxes, movie albums and singer collections into separate, tagged songs, and saves whole videos, playlists and courses.**
+
+[Website](https://urgen-dorjee.github.io/CadenceApp/) · [Download](https://github.com/Urgen-Dorjee/CadenceApp/releases/latest)
 
 Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie album. Cadence finds where each song starts and ends, cuts in the gap between songs so nothing is clipped and nothing spills over, and files the songs into your music library with titles, album, year, track numbers and cover art.
 

@@ -4,6 +4,8 @@ import { defineConfig } from '@playwright/test'
 // temporary data folder. No network is used: the media is made with FFmpeg on the spot.
 export default defineConfig({
   testDir: '.',
+  // Website screenshots are made on request only: SCREENSHOTS=1 npx playwright test screenshots
+  testIgnore: process.env.SCREENSHOTS ? [] : ['screenshots.spec.ts'],
   timeout: 120_000,
   expect: { timeout: 20_000 },
   workers: 1,

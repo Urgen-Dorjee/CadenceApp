@@ -16,7 +16,7 @@ export function ffmpeg(): string {
   return existsSync(bundled) ? bundled : 'ffmpeg'
 }
 
-function python(): string {
+export function python(): string {
   const venv = join(ROOT, 'backend', 'venv', isWindows ? 'Scripts/python.exe' : 'bin/python')
   return existsSync(venv) ? venv : isWindows ? 'python' : 'python3'
 }
