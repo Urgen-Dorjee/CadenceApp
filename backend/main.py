@@ -64,7 +64,8 @@ async def lifespan(app: FastAPI):
     print("[Backend] Shutting down...")
 
 
-app = FastAPI(title="Cadence Backend", version="2.16.1", lifespan=lifespan)
+# The version comes from Electron (package.json), so there is one place to change it.
+app = FastAPI(title="Cadence Backend", version=os.environ.get("CADENCE_VERSION") or "dev", lifespan=lifespan)
 
 
 def _token_ok(value: str | None) -> bool:

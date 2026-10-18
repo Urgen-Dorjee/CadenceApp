@@ -324,7 +324,7 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
               }}
               className={clsx('h-7 px-3 rounded text-[13px] capitalize transition-colors', view === v ? 'bg-raised text-ink font-medium' : 'text-muted hover:text-ink')}
             >
-              {v === 'artists' ? 'Singers' : v}
+              {{ albums: 'Albums', artists: 'Singers', songs: 'Songs' }[v]}
             </button>
           ))}
         </div>
@@ -407,7 +407,7 @@ function LibraryTabs({ tab, onChange }: { tab: 'music' | 'videos'; onChange: (t:
             tab === t ? 'bg-raised text-ink font-semibold shadow-[inset_0_0_0_1px_rgb(var(--accent))]' : 'text-muted hover:text-ink',
           )}
         >
-          {t}
+          {t === 'music' ? 'Music' : 'Videos'}
         </button>
       ))}
     </div>

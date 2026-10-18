@@ -33,6 +33,8 @@ if (!app.isPackaged && process.env.CADENCE_DEBUG_PORT) {
 // A fresh secret every launch: only this window can talk to the local backend.
 const BACKEND_TOKEN = crypto.randomBytes(32).toString('base64url')
 let backendPort = 0
+// True once the backend answers; the window waits for it rather than knocking on a closed port.
+let backendReady = false
 
 let mainWindow: BrowserWindow | null = null
 let pythonManager: PythonManager | null = null
@@ -164,7 +166,7 @@ function createWindow() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('backend:getInfo', () => ({ port: backendPort, token: BACKEND_TOKEN }))
+  ipcMain.handle('backend:getInfo', () => ({ port: backendPort, token: BACKEND_TOKEN, ready: backendReady }))
 
   ipcMain.handle('dialog:openDir', async (_event, options?: { defaultPath?: string; title?: string }) => {
     if (!mainWindow) return null
@@ -260,6 +262,7 @@ function bundledTool(folder: string, exe: string): string | null {
 }
 
 async function startBackend() {
+  backendReady = false
   pythonManager?.stop()
   const ffmpeg = new FFmpegManager(app.getAppPath(), app.isPackaged)
   backendPort = await getFreePort()
@@ -275,12 +278,14 @@ async function startBackend() {
     denoPath: bundledTool('deno', exe('deno')),
     fpcalcPath: bundledTool('chromaprint', exe('fpcalc')),
     dataDir: app.getPath('userData'),
+    appVersion: app.getVersion(),
   })
   pythonManager.log = (level, message) => log[level](message)
   pythonManager.onCrash = onBackendCrash
 
   try {
     await pythonManager.start()
+    backendReady = true
     mainWindow?.webContents.send('backend:ready')
   } catch (err) {
     log.error('Backend failed to start', err)
@@ -290,6 +295,7 @@ async function startBackend() {
 
 /** Restart the audio engine after a crash, but give up if it keeps crashing. */
 function onBackendCrash(code: number | null) {
+  backendReady = false
   if (quitting) return
   const now = Date.now()
   crashTimes.push(now)

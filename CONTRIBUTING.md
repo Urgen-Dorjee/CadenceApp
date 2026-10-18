@@ -13,6 +13,7 @@ then `npm install`, `npm run setup:all` and `npm run dev`.
 npm run lint                     # ESLint and Ruff
 npx tsc --noEmit -p tsconfig.json
 npm test                         # frontend
+npm run test:ui                  # the built app, clicked through by Playwright
 cd backend && python -m pytest   # backend (needs FFmpeg: npm run setup:ffmpeg)
 ```
 
@@ -26,7 +27,7 @@ CI runs the same checks on Windows, macOS and Linux.
 
 ## Releasing (maintainers)
 
-Bump the version in `package.json`, `package-lock.json` and `backend/main.py`, merge to `master`,
+Bump the version in `package.json` and `package-lock.json` (the backend takes it from the app), merge to `master`,
 and push a tag `vX.Y.Z`. The Release workflow tests, builds all four installers, adds checksums
 and build attestations, and publishes the release with the update feeds.
 
