@@ -1,5 +1,7 @@
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { execFileSync, execSync } from 'child_process'
+import { chromium, type Browser, type Page } from '@playwright/test'
+import { execFileSync, execSync, spawn, type ChildProcess } from 'child_process'
+import { createRequire } from 'module'
+import { createServer } from 'net'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
@@ -50,13 +52,45 @@ export function seedLecture(dataDir: string, videoDir: string): string {
 }
 
 export interface Launched {
-  app: ElectronApplication
+  /** The app's own process, started by the tests (not by Playwright: see quit()). */
+  child: ChildProcess
+  browser: Browser
   page: Page
   dataDir: string
   musicDir: string
   videoDir: string
   /** Console errors, page errors and Content-Security-Policy violations seen so far. */
   problems: string[]
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number }
+      server.close(() => resolve(port))
+    })
+  })
+}
+
+async function connect(port: number): Promise<Browser> {
+  const deadline = Date.now() + 30_000
+  for (;;) {
+    try {
+      return await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
+    } catch (e) {
+      if (Date.now() > deadline) throw e
+      await new Promise((r) => setTimeout(r, 300))
+    }
+  }
+}
+
+async function firstWindow(browser: Browser): Promise<Page> {
+  const context = browser.contexts()[0]
+  const existing = context.pages().find((p) => !p.url().startsWith('devtools://'))
+  return existing ?? context.waitForEvent('page')
 }
 
 /** Start the built app with its own data folder and music/video folders in a temp directory. */
@@ -74,12 +108,16 @@ export async function launch(setup?: (dirs: { dataDir: string; videoDir: string 
     version: 3, onboarded: false, library_dir: musicDir, video_dir: videoDir, identify_songs: false, lyrics: 'off',
   }))
   setup?.({ dataDir, videoDir })
-  const app = await electron.launch({
-    args: [ROOT, `--user-data-dir=${dataDir}`, ...(process.platform === 'linux' ? ['--no-sandbox'] : [])],
-    cwd: ROOT,
-    env: { ...process.env, VITE_DEV_SERVER_URL: '' },
+  // Started here and driven over the DevTools protocol, rather than with Playwright's Electron
+  // launcher, which waits on pipes Electron's helper processes keep open on Linux.
+  const port = await freePort()
+  const electronPath = createRequire(import.meta.url)('electron') as unknown as string
+  const child = spawn(electronPath, [ROOT, `--user-data-dir=${dataDir}`, `--remote-debugging-port=${port}`,
+    ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], {
+    cwd: ROOT, env: { ...process.env, VITE_DEV_SERVER_URL: '' }, stdio: 'ignore',
   })
-  const page = await app.firstWindow()
+  const browser = await connect(port)
+  const page = await firstWindow(browser)
   const problems: string[] = []
   page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()} (${m.location().url})`))
   page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
@@ -87,7 +125,7 @@ export async function launch(setup?: (dirs: { dataDir: string; videoDir: string 
   // first load is watched too.
   await page.waitForLoadState('domcontentloaded')
   await page.reload()
-  return { app, page, dataDir, musicDir, videoDir, problems }
+  return { child, browser, page, dataDir, musicDir, videoDir, problems }
 }
 
 /** Call the app's backend from the window, as the interface does. */
@@ -118,23 +156,20 @@ function electronLeftovers(): string[] {
 }
 
 /**
- * Quit the app as a user would and check its process exits within 15 s; otherwise show why
- * (the end of its log and the processes still running), stop it, and fail.
- *
- * On Linux, Electron's helper processes can keep the output pipes Playwright watches open after
- * the app itself has exited, so app.close() may never finish: what's checked is the exit.
+ * Quit the app as a user would (close its window) and check its process exits within 15 s;
+ * otherwise show why (the end of its log and the processes still running), stop it, and fail.
  */
 export async function quit(run: Launched): Promise<void> {
-  const child = run.app.process()
+  const { child } = run
   const pid = child.pid
   const exitedEvent = new Promise<void>((done) => (child.exitCode !== null ? done() : child.once('exit', () => done())))
-  run.app.evaluate(({ app }) => app.quit()).catch(() => undefined)  // the call ends when the app does
+  // As a user would: closing the only window quits Cadence (and stops its backend).
+  await run.page.close().catch(() => undefined)
   const exited = await within(exitedEvent, 15_000)
+  await run.browser.close().catch(() => undefined)
   if (exited) {
-    if (!(await within(run.app.close(), 10_000))) {
-      const leftovers = electronLeftovers()
-      if (leftovers.length) execSync(`kill -KILL ${leftovers.map((l) => l.trim().split(/\s+/)[0]).join(' ')}`)
-    }
+    const leftovers = electronLeftovers()
+    if (leftovers.length) execSync(`kill -KILL ${leftovers.map((l) => l.trim().split(/\s+/)[0]).join(' ')}`)
     return
   }
   const log = join(run.dataDir, 'logs', 'main.log')
