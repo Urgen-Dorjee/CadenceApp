@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import * as Dialog from '@radix-ui/react-dialog'
 import { clsx } from 'clsx'
 import {
-  Captions, CaptionsOff, ExternalLink, ListVideo, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play,
+  ArrowLeft, Captions, CaptionsOff, ExternalLink, ListVideo, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play,
   RotateCcw, RotateCw, SkipBack, SkipForward, Volume2, VolumeX, X,
 } from 'lucide-react'
 import { api, type LibraryVideo, type PlayerDetails } from '../../services/api'
@@ -477,8 +477,16 @@ function Player({ path }: { path: string }) {
         )}
 
         {/* Top: what's playing, and leaving the player. */}
-        <div className={clsx('absolute inset-x-0 top-0 px-4 pt-3 pb-10 bg-gradient-to-b from-black/80 to-transparent flex items-start gap-3 transition-opacity', controls ? 'opacity-100' : 'opacity-0 pointer-events-none')}>
-          <div className="flex-1 min-w-0">
+        <div className={clsx('absolute inset-x-0 top-0 px-3 pt-3 pb-10 bg-gradient-to-b from-black/80 to-transparent flex items-start gap-3 transition-opacity', controls ? 'opacity-100' : 'opacity-0 pointer-events-none')}>
+          <Dialog.Close asChild>
+            <button
+              className="shrink-0 h-9 pl-2 pr-3 rounded-full flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-sm font-medium focus-visible:ring-2 focus-visible:ring-accent"
+              title="Back (Esc)"
+            >
+              <ArrowLeft size={17} aria-hidden="true" /> Back
+            </button>
+          </Dialog.Close>
+          <div className="flex-1 min-w-0 pt-0.5">
             <Dialog.Title className="font-semibold truncate">{title || 'Video'}</Dialog.Title>
             <Dialog.Description className="text-xs text-white/70 truncate">
               {current?.playlist && index >= 0 ? `${current.playlist} · ${index + 1} of ${course.length}` : current?.channel}
@@ -625,7 +633,9 @@ export default function VideoPlayer() {
       <Dialog.Portal>
         <Dialog.Content
           aria-label="Video player"
-          className="fixed inset-0 z-[60] bg-black outline-none"
+          // Below the title bar: Windows draws its window buttons over the top-right corner, and the Mac its
+          // traffic lights over the top-left, so the player's own Back and close buttons must not sit there.
+          className="fixed inset-x-0 bottom-0 top-10 z-[60] bg-black outline-none"
           // Focus the player itself, not its first button, so Space plays rather than presses a button.
           onOpenAutoFocus={(e) => {
             e.preventDefault()
