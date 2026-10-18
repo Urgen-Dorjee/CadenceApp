@@ -98,3 +98,8 @@ vite.config.d.ts
 # Playwright output
 e2e-results/
 e2e-report/
+
+# The website's images
+!docs/**/*.png
+!docs/**/*.jpg
+!docs/*.png
