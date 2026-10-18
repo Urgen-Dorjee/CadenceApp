@@ -1,6 +1,6 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { execFileSync } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs'
+import { execFileSync, execSync } from 'child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -102,4 +102,36 @@ export async function api<T = unknown>(page: Page, method: string, path: string,
     if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`)
     return res.json()
   }, { method, path, body }) as Promise<T>
+}
+
+/**
+ * Quit the app as a user would. If it hasn't exited within 15 s, show why (the end of its log
+ * and the processes still running), stop it and its backend, and fail: Cadence must quit cleanly.
+ */
+export async function quit(run: Launched): Promise<void> {
+  const pid = run.app.process().pid
+  const exited = await Promise.race([
+    run.app.close().then(() => true),
+    new Promise<boolean>((done) => setTimeout(() => done(false), 15_000)),
+  ])
+  if (exited) return
+  const log = join(run.dataDir, 'logs', 'main.log')
+  const lines = existsSync(log) ? readFileSync(log, 'utf8').split('\n').slice(-60) : ['(none)']
+  console.error(['--- main.log (end) ---', ...lines].join('\n'))
+  try {
+    const running = execSync(isWindows ? 'tasklist' : 'ps -eo pid,ppid,stat,etime,cmd --forest', { encoding: 'utf8' })
+      .split('\n')
+      .filter((l) => /electron|python|Cadence/i.test(l))
+    console.error(['--- still running ---', ...running].join('\n'))
+  } catch {
+    /* listing processes is only for the report */
+  }
+  if (pid) {
+    try {
+      execSync(isWindows ? `taskkill /T /F /PID ${pid}` : `pkill -KILL -P ${pid}; kill -KILL ${pid}`)
+    } catch {
+      /* already gone */
+    }
+  }
+  throw new Error('Cadence did not quit within 15 s of closing (its log and processes are printed above)')
 }
