@@ -70,3 +70,8 @@ def test_skipped_tracks_are_reported_and_the_splits_own_files_are_ignored():
 def test_own_files_match_regardless_of_case_on_windows():
     lib = [song("Song A", path=r"C:\Music\A.mp3")]
     assert find([track("Song A")], lib, exclude_paths=["c:/music/a.mp3"]) == {}
+
+
+def test_placeholder_names_are_never_duplicates():
+    t = track("Track 3", end=337)
+    assert find([t], [song("Track 3", "Romantic Love Songs", 330)]) == {}

@@ -39,7 +39,7 @@ export function SubtitleChips({ value, onChange, id = 'add-subtitle' }: { value:
           <button
             type="button"
             className="w-5 h-5 rounded-full flex items-center justify-center hover:bg-accent/20"
-            aria-label={`No ${languageName(code)} subtitles`}
+            aria-label={`Remove ${languageName(code)} subtitles`}
             onClick={() => onChange(value.filter((c) => c !== code))}
           >
             <X size={12} />

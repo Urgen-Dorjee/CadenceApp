@@ -55,8 +55,8 @@ export default function WelcomeDialog({
           <div>
             <Dialog.Title className="font-display text-lg font-semibold">Welcome to Cadence</Dialog.Title>
             <Dialog.Description className="text-[13px] text-muted mt-1">
-              Split jukeboxes, movie albums and singer collections into separate, tagged songs. Two quick choices and you're
-              ready. You can change both later in Settings.
+              Split jukeboxes, movie albums and singer collections into separate, tagged songs, or save whole videos like
+              lectures and documentaries. Two quick choices for your songs and you're ready. You can change both later in Settings.
             </Dialog.Description>
           </div>
 

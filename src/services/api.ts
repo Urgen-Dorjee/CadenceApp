@@ -129,7 +129,8 @@ export interface VideoDetails {
   duration: number
   thumbnail: string
   chapters: { start: number; title: string }[]
-  qualities: { id: VideoOptions['quality']; label: string; size: number }[]
+  /** `sizes`: what would download for each file type; `size`: for MP4. */
+  qualities: { id: VideoOptions['quality']; label: string; size: number; sizes?: Partial<Record<VideoOptions['container'], number>> }[]
   subtitles: { lang: string; name: string; auto: boolean }[]
   saved: boolean
 }

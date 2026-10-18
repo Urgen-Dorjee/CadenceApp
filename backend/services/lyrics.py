@@ -56,7 +56,13 @@ def fetch(title: str, artist: str, album: str, duration: float) -> dict[str, str
     if not title.strip():
         return None
     exact = {"track_name": title, "artist_name": artist, "album_name": album, "duration": round(duration)}
-    found = _pick(_get_json("get", exact)) if artist else None
+    try:
+        found = _pick(_get_json("get", exact)) if artist else None
+    except urllib.error.HTTPError as e:
+        # LRCLIB sometimes answers an exact lookup it can't match with 503; its search still works.
+        if e.code < 500:
+            raise
+        found = None
     if found:
         return found
     # No exact match (or no singer known): search, and only accept a result of about the same length.

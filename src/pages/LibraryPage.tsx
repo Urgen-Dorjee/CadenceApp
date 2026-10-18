@@ -241,6 +241,8 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
   const albums = useMemo(() => groupSongs(filtered, 'album'), [filtered])
   const openGroup = open ? (open.kind === 'artist' ? artists : albums).find((g) => g.key === open.key) : undefined
   const totalTime = (songs ?? []).reduce((t, s) => t + s.duration, 0)
+  // The header describes the whole library, whatever the search shows.
+  const counts = useMemo(() => ({ singers: groupSongs(songs ?? [], 'artist').length, albums: groupSongs(songs ?? [], 'album').length }), [songs])
 
   if (songs === null) {
     return (
@@ -274,7 +276,7 @@ function MusicLibrary({ tabs }: { tabs: ReactNode }) {
         <div className="flex-1 min-w-0">
           <h1 className="font-display text-xl font-semibold tracking-tight">Library</h1>
           <p className="text-muted tnum">
-            {plural(songs.length, 'song')} · {plural(artists.length, 'singer')} · {plural(albums.length, 'album')} · {formatDuration(totalTime)}
+            {plural(songs.length, 'song')} · {plural(counts.singers, 'singer')} · {plural(counts.albums, 'album')} · {formatDuration(totalTime)}
           </p>
         </div>
         {tabs}

@@ -580,13 +580,13 @@ export default function SettingsPage() {
             </div>
           </Row>
           <Row title="Arrange by" htmlFor="video-layout" hint={prefs.video_layout === 'channel' ? 'Videos\\Cadence\\[Channel]\\[Video].mp4. A course gets numbered files in its own folder.' : 'Every video in one folder. A course still gets its own folder.'}>
-            <select id="video-layout" className="field w-56" value={prefs.video_layout} onChange={(e) => save({ video_layout: e.target.value as Preferences['video_layout'] })}>
+            <select id="video-layout" className="field w-64" value={prefs.video_layout} onChange={(e) => save({ video_layout: e.target.value as Preferences['video_layout'] })}>
               <option value="channel">A folder for each channel</option>
               <option value="flat">One folder</option>
             </select>
           </Row>
           <Row title="Quality" htmlFor="video-quality" hint="The highest it downloads. A video that has less gets its next lower quality.">
-            <select id="video-quality" className="field w-56" value={prefs.video_quality} onChange={(e) => save({ video_quality: e.target.value as Preferences['video_quality'] })}>
+            <select id="video-quality" className="field w-64" value={prefs.video_quality} onChange={(e) => save({ video_quality: e.target.value as Preferences['video_quality'] })}>
               <option value="1080">1080p (recommended)</option>
               <option value="best">Best available (up to 4K)</option>
               <option value="2160">4K</option>
@@ -597,7 +597,7 @@ export default function SettingsPage() {
             </select>
           </Row>
           <Row title="File type" htmlFor="video-container" hint="MP4 plays everywhere. MKV keeps every subtitle and sound track in one file.">
-            <select id="video-container" className="field w-56" value={prefs.video_container} onChange={(e) => save({ video_container: e.target.value as Preferences['video_container'] })}>
+            <select id="video-container" className="field w-64" value={prefs.video_container} onChange={(e) => save({ video_container: e.target.value as Preferences['video_container'] })}>
               <option value="mp4">MP4</option>
               <option value="mkv">MKV</option>
             </select>
@@ -612,7 +612,7 @@ export default function SettingsPage() {
             <Switch id="video-auto-subs" checked={prefs.video_auto_subtitles} onChange={(v) => save({ video_auto_subtitles: v })} />
           </Row>
           <Row title="Save subtitles" htmlFor="video-subs-mode">
-            <select id="video-subs-mode" className="field w-56" value={prefs.video_subtitle_mode} onChange={(e) => save({ video_subtitle_mode: e.target.value as Preferences['video_subtitle_mode'] })}>
+            <select id="video-subs-mode" className="field w-64" value={prefs.video_subtitle_mode} onChange={(e) => save({ video_subtitle_mode: e.target.value as Preferences['video_subtitle_mode'] })}>
               <option value="embed">Inside the video</option>
               <option value="srt">As separate .srt files</option>
               <option value="both">Both</option>
@@ -631,14 +631,14 @@ export default function SettingsPage() {
             <Switch id="video-skip" checked={prefs.video_skip_saved} onChange={(v) => save({ video_skip_saved: v })} />
           </Row>
           <Row title="Pause between videos" htmlFor="video-pause" hint="Keeps YouTube from asking you to prove you're not a bot when you download many videos.">
-            <select id="video-pause" className="field w-56" value={prefs.video_pause_s} onChange={(e) => save({ video_pause_s: Number(e.target.value) })}>
+            <select id="video-pause" className="field w-64" value={prefs.video_pause_s} onChange={(e) => save({ video_pause_s: Number(e.target.value) })}>
               <option value={5}>5 to 10 seconds (recommended)</option>
               <option value={30}>30 to 60 seconds</option>
               <option value={0}>No pause</option>
             </select>
           </Row>
           <Row title="Speed limit" htmlFor="video-speed" hint="Leave room for others on a shared connection.">
-            <select id="video-speed" className="field w-56" value={prefs.video_rate_limit_mb} onChange={(e) => save({ video_rate_limit_mb: Number(e.target.value) })}>
+            <select id="video-speed" className="field w-64" value={prefs.video_rate_limit_mb} onChange={(e) => save({ video_rate_limit_mb: Number(e.target.value) })}>
               <option value={0}>No limit</option>
               <option value={10}>10 MB/s</option>
               <option value={5}>5 MB/s</option>
