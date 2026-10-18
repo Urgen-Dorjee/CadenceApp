@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
-import { ROOT, api, launch, makeTwoSongs, seedLecture, type Launched } from './app'
+import { ROOT, api, launch, makeTwoSongs, quit, seedLecture, type Launched } from './app'
 
 let run: Launched
 
@@ -13,7 +13,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
-  await run?.app.close()
+  if (run) await quit(run)
 })
 
 test('starts, connects to the audio engine and welcomes a new user', async () => {
