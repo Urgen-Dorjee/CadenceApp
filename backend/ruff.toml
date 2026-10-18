@@ -1,0 +1,18 @@
+# Lint for the backend (run from backend/: `ruff check .`).
+line-length = 140
+target-version = "py312"
+extend-exclude = ["venv", "dist", "build"]
+
+[lint]
+# pycodestyle, pyflakes, bugbear, blind except, pyupgrade (modern syntax), simplify.
+select = ["E", "W", "F", "B", "BLE", "UP", "SIM"]
+ignore = [
+    "E501",    # long lines are fine where they read better
+    "SIM105",  # try/except/pass is clearer than contextlib.suppress here
+    "SIM108",  # ternaries aren't always clearer
+    "B905",    # zip() over lists built to the same length
+    "B008",    # FastAPI's Query()/Depends() in defaults is the intended style
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011", "SIM117", "SIM115", "SIM118", "E731", "E402"]

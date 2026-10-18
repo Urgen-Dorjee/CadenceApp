@@ -101,8 +101,8 @@ async def update_yt_dlp():
 
     try:
         latest = await asyncio.to_thread(ytdlp_updates.latest_version)
-    except Exception:
-        raise HTTPException(status_code=502, detail="Couldn't check for a new yt-dlp. Check your internet connection.")
+    except Exception as e:  # noqa: BLE001 - any failure to reach PyPI reads the same to the user
+        raise HTTPException(status_code=502, detail="Couldn't check for a new yt-dlp. Check your internet connection.") from e
     have = [yt_dlp.version.__version__, ytdlp_updates.installed_version(ytdlp_updates.packages_dir(settings.data_dir))]
     newest_here = max((v for v in have if v), key=ytdlp_updates.version_key)
     if ytdlp_updates.version_key(latest) <= ytdlp_updates.version_key(newest_here):
@@ -110,9 +110,9 @@ async def update_yt_dlp():
         return {"updated": restart, "restart_required": restart, "version": newest_here}
     try:
         await asyncio.to_thread(ytdlp_updates.install, settings.data_dir, latest)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - logged; the user gets a plain message
         logging.getLogger(__name__).warning("yt-dlp update failed: %s", e)
-        raise HTTPException(status_code=500, detail="Could not update yt-dlp. Check your internet connection.")
+        raise HTTPException(status_code=500, detail="Could not update yt-dlp. Check your internet connection.") from e
     return {"updated": True, "restart_required": True, "version": latest}
 
 
@@ -162,7 +162,7 @@ async def clear_downloads():
     """Delete downloaded audio for finished splits. Saved songs, waveforms and thumbnails stay."""
     freed, cleared = 0, 0
     by_job: dict[str, dict] = {}
-    for job, source in _downloads():
+    for job, _source in _downloads():
         if job["status"] in ACTIVE_STATES or job["status"] == "review":
             continue  # still needed for reviewing or saving
         by_job[job["id"]] = job

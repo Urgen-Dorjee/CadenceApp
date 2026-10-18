@@ -132,7 +132,7 @@ function Lyrics({ songId }: { songId: string }) {
   const time = usePlayerStore((s) => s.time)
   const seek = usePlayerStore((s) => s.seek)
   const { state, allowOnline } = useLyrics(songId, true)
-  const lines = state.status === 'ready' ? state.lines : []
+  const lines = useMemo(() => (state.status === 'ready' ? state.lines : []), [state])
   const active = useMemo(() => activeLine(lines, time), [lines, time])
   const activeRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLDivElement>(null)

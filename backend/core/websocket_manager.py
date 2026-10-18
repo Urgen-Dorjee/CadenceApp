@@ -24,7 +24,7 @@ class WebSocketManager:
         for ws in self.connections:
             try:
                 await ws.send_text(payload)
-            except Exception:
+            except Exception:  # noqa: BLE001 - a closed window, however it closed
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws)
@@ -35,7 +35,7 @@ class WebSocketManager:
         for ws in list(self.connections):
             try:
                 await ws.send_text(payload)
-            except Exception:
+            except Exception:  # noqa: BLE001 - a closed window, however it closed
                 self.disconnect(ws)
 
     async def send_job_deleted(self, job_id: str):
@@ -43,7 +43,7 @@ class WebSocketManager:
         for ws in list(self.connections):
             try:
                 await ws.send_text(payload)
-            except Exception:
+            except Exception:  # noqa: BLE001 - a closed window, however it closed
                 self.disconnect(ws)
 
 

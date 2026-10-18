@@ -140,7 +140,7 @@ Title : Saajan - Hindi
 Singers : Kumar Sanu & Anuradha Paudwal
 Title : Sooryavansham
 
-4.Song : Humsafar Milti Hai Manzil - 
+4.Song : Humsafar Milti Hai Manzil -
 Singer : Anuradha Paudwal
 Title : Insaaf
 

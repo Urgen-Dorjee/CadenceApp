@@ -87,7 +87,7 @@ export default function ReviewPage() {
     syncedStatus.current = job.status
   }, [job, dirty])
 
-  const sources = job?.sources ?? []
+  const sources = useMemo(() => job?.sources ?? [], [job?.sources])
   const singleSource = sources.length === 1 ? sources[0] : null
   const exporting = job?.status === 'exporting'
   const [peaks, setPeaks] = useState<number[] | null>(null)
@@ -99,6 +99,8 @@ export default function ReviewPage() {
     return () => {
       cancelled = true
     }
+    // The peaks belong to the source, not to the source object, which changes with every update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, singleSource?.id])
   // Songs already in the library, checked again a moment after names, singers or times change.
   const [duplicates, setDuplicates] = useState<Record<string, LibraryMatch[]>>({})

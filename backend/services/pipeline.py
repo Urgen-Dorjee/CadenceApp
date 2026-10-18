@@ -12,7 +12,8 @@ import re
 import shutil
 import threading
 import time
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from config import load_preferences, settings
 from core.db import get_store

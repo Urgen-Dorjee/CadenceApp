@@ -90,3 +90,7 @@ coverage.xml
 
 # Cadence's own service keys, written by the release build from repository secrets
 backend/core/app_keys.py
+
+# Type declarations emitted by tsc for the Electron and Vite config sources
+electron/*.d.ts
+vite.config.d.ts

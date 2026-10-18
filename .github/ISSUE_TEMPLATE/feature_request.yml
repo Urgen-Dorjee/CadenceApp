@@ -1,0 +1,11 @@
+name: An idea
+description: Something Cadence could do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: What you want to do, and how you do it today.
+    validations:
+      required: true

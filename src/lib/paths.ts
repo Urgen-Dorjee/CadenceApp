@@ -14,6 +14,7 @@ export function shorten(name: string, limit: number) {
 }
 
 function sanitize(name: string, limit: number) {
+  // eslint-disable-next-line no-control-regex -- control characters aren't allowed in file names
   const cleaned = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').replace(/\s{2,}/g, ' ').trim().replace(/[. ]+$/, '')
   return shorten(cleaned, limit).replace(/[. ]+$/, '') || 'Untitled'
 }

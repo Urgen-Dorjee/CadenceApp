@@ -9,7 +9,8 @@ import asyncio
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"

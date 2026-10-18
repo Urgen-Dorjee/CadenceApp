@@ -5,7 +5,8 @@ import glob
 import os
 import re
 import urllib.parse
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 import yt_dlp
 from yt_dlp.utils import DownloadCancelled

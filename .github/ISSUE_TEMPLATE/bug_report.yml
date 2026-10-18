@@ -1,0 +1,37 @@
+name: Something isn't working
+description: A split, download, save or screen that doesn't do what it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: YouTube link (if it's about one)
+      description: The video or playlist, so it can be tried. Leave out anything private.
+  - type: input
+    id: version
+    attributes:
+      label: Cadence version
+      description: Settings → Updates shows it.
+      placeholder: "2.16.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options: [Windows, Mac with Apple Silicon, Mac with Intel, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: Settings → Troubleshooting → Open logs. Paste the end of main.log (it has no passwords or keys).
+      render: text

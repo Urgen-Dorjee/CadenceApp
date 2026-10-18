@@ -151,11 +151,11 @@ class Preferences(BaseModel):
 
 def load_preferences() -> Preferences:
     try:
-        with open(settings.prefs_path, "r", encoding="utf-8") as f:
+        with open(settings.prefs_path, encoding="utf-8") as f:
             data = json.load(f)
         # A settings file from before the welcome screen existed: Cadence is already set up.
         data.setdefault("onboarded", True)
-        if data.get("version", 1) < 2:
+        if data.get("version", 1) < 2:  # noqa: SIM102 - one block per settings version
             # ±2 s was the old default and too narrow to reach the real gap between songs.
             if data.get("snap_window_s") == 2.0:
                 data["snap_window_s"] = 5.0

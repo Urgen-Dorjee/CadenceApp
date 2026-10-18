@@ -91,7 +91,10 @@ function loadWindowState(): WindowState {
     if (saved.x !== undefined && saved.y !== undefined) {
       const area = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }).workArea
       const visible = saved.x < area.x + area.width - 100 && saved.y < area.y + area.height - 100 && saved.x + saved.width > area.x + 100
-      if (!visible) delete saved.x, delete saved.y
+      if (!visible) {
+        delete saved.x
+        delete saved.y
+      }
     }
     return { ...fallback, ...saved }
   } catch {
