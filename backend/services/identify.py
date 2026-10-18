@@ -16,7 +16,8 @@ import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from core.ffmpeg_utils import get_ffmpeg_path
 from core.platform_paths import bundled_tool

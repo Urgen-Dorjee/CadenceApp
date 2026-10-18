@@ -126,6 +126,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (prefs) setLibraryText(prefs.library_dir)
+    // Only a new library folder resets the text field, not every other setting saved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs?.library_dir])
 
   useEffect(() => {

@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 

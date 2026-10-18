@@ -149,16 +149,83 @@ jobs:
             ${{ matrix.out }}/*.blockmap
             ${{ matrix.out }}/latest*.yml
 
+  # Optional, free for open-source projects: SignPath Foundation signs the Windows installer
+  # so Windows doesn't warn about an unknown publisher. Off until the repository has the
+  # SIGNPATH_API_TOKEN secret and the SIGNPATH_ORGANIZATION_ID variable (see CONTRIBUTING.md).
+  sign-windows:
+    name: Sign the Windows installer
+    needs: build
+    if: vars.SIGNPATH_ORGANIZATION_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Cadence-Windows-x64
+          path: win
+      - name: Hand over the unsigned installer
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cadence-Windows-unsigned
+          path: win/*.exe
+          if-no-files-found: error
+      - name: Sign with SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'cadence' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - name: Point the update feed at the signed installer
+        shell: bash
+        run: |
+          exe=$(ls signed/*.exe | head -1)
+          cp "$exe" win/
+          node scripts/update-latest-yml.mjs win/latest.yml "win/$(basename "$exe")"
+          # The old blockmap describes the unsigned bytes; without one, updates download in full.
+          rm -f win/*.blockmap
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cadence-Windows-x64
+          path: win/*
+          overwrite: true
+
   publish:
     name: Publish the release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, sign-windows]
+    # Signing is optional: publish when the builds passed and signing passed or was off.
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.build.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.sign-windows.result)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write      # build attestations
+      attestations: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum *.exe *.dmg *.AppImage *.deb > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      # Proof that each installer was built by this workflow from this commit:
+      #   gh attestation verify <file> --repo Urgen-Dorjee/CadenceApp
+      - name: Attest where the installers come from
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
 
       - name: Create the GitHub release
         env:

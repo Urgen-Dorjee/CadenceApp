@@ -13,7 +13,8 @@ import os
 import re
 import shutil
 import time
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 import yt_dlp
 from yt_dlp.postprocessor.common import PostProcessor
@@ -206,12 +207,12 @@ def one_track_per_language(manual: dict[str, Any], auto: dict[str, Any], langs: 
     translations ("en-de") and the other variants are dropped, so a video never gets three
     English tracks.
     """
+    def matching(tracks: dict[str, Any], lang: str) -> list[str]:
+        return [c for c in tracks if c == lang or c.startswith(lang + "-")]
+
     manual, auto = dict(manual), dict(auto)
     for lang in langs:
-        def matching(tracks: dict[str, Any]) -> list[str]:
-            return [c for c in tracks if c == lang or c.startswith(lang + "-")]
-
-        mine, machine = matching(manual), matching(auto)
+        mine, machine = matching(manual, lang), matching(auto, lang)
         if mine:
             keep, source = (lang if lang in mine else mine[0]), manual
         elif machine:

@@ -4,6 +4,37 @@ import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
+import type { Plugin } from 'vite'
+
+/**
+ * The installed app's Content-Security-Policy: scripts only from the app itself, and network
+ * access only to its own local backend (plus YouTube thumbnails shown before a download).
+ * Only for builds: the dev server needs inline scripts for hot reload.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: http://127.0.0.1:* https:",
+  "media-src 'self' blob: http://127.0.0.1:*",
+  "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*",
+  "font-src 'self' data:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-src 'none'",
+].join('; ')
+
+function contentSecurityPolicy(): Plugin {
+  return {
+    name: 'cadence-csp',
+    apply: 'build',
+    transformIndexHtml: (html) =>
+      html.replace('<meta charset="UTF-8" />', `<meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+  }
+}
 
 export default defineConfig({
   test: {
@@ -14,6 +45,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    contentSecurityPolicy(),
     electron([
       {
         entry: 'electron/main.ts',
@@ -56,7 +88,8 @@ export default defineConfig({
         },
       },
     ]),
-    renderer(),
+    // Rewrites Node imports for the window; tests run in Node and need the real ones.
+    ...(process.env.VITEST ? [] : [renderer()]),
   ],
   build: {
     rollupOptions: {

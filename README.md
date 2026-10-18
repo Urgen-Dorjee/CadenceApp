@@ -19,6 +19,8 @@ Paste a link to a two-hour "Udit Narayan Superhits" jukebox or a full movie albu
 | macOS, Intel | `Cadence-<version>-mac-Intel.dmg` | From the Releases page |
 | Linux | `Cadence-<version>-linux-x86_64.AppImage`, or `.deb` for Ubuntu/Debian | Automatic (AppImage) |
 
+**First launch on Windows:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info**, then **Run anyway**. Cadence is open source and each installer is built in public by GitHub (see *Checking a download* below).
+
 **First launch on a Mac:** pick the download for your Mac's chip ( → About This Mac: "Apple M…" is `mac-AppleSilicon`, "Intel" is `mac-Intel`). The app isn't signed with an Apple Developer ID yet, so the first time you open it macOS says *"Cadence" Not Opened*. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. After that it opens normally.
 
 If macOS ever says Cadence *"is damaged and can't be opened"*, click **Cancel** and run this once in Terminal, then open it again:
@@ -28,6 +30,14 @@ xattr -cr /Applications/Cadence.app
 ```
 
 **AppImage on Linux:** make it executable (`chmod +x Cadence-*.AppImage`) and run it.
+
+**Checking a download:** each release lists `SHA256SUMS.txt`, and every installer carries a GitHub build attestation proving it was built by this repository's release workflow from the tagged source. With the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify Cadence-Setup-<version>.exe --repo Urgen-Dorjee/CadenceApp
+```
+
+Cadence is free and open source under the MIT license. Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), and report security problems privately as described in [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -264,6 +274,7 @@ If `CADENCE_TOKEN` isn't set, the backend prints a generated token. Every reques
 | `npm run setup:all` | Set up the Python venv and download FFmpeg, Deno and fpcalc |
 | `npm run build` | Build the backend bundle, the frontend and the Windows installer |
 | `npm run release` | Build and publish the installer to GitHub Releases (see below) |
+| `npm run lint` | ESLint (frontend, Electron) and Ruff (backend) |
 
 ## Project structure
 
@@ -346,7 +357,7 @@ Installed copies on Windows and Linux (AppImage) check for updates every six hou
 1. Bump `version` in `package.json` (for example `npm version 2.1.0 --no-git-tag-version`) and commit.
 2. Tag and push: `git tag v2.1.0 && git push origin master v2.1.0`.
 
-The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, then on Windows, macOS (Apple Silicon and Intel) and Linux runs all tests and builds the installers, and finally publishes them in one release with the update feeds (`latest.yml`, `latest-linux.yml`). It uses the repository's built-in token, so no secrets are needed. Pushing to a branch named `build/<anything>`, or running the workflow by hand, builds everything without publishing and keeps the installers as files of that run.
+The **Release** workflow (`.github/workflows/release.yml`) checks the tag matches `package.json`, then on Windows, macOS (Apple Silicon and Intel) and Linux runs all tests and builds the installers, and finally publishes them in one release with the update feeds (`latest.yml`, `latest-linux.yml`). It adds `SHA256SUMS.txt` and a build attestation for every installer. It uses the repository's built-in token, so no secrets are needed; Windows signing through SignPath (free for open source) switches on when its token is added, as described in [CONTRIBUTING.md](CONTRIBUTING.md#free-code-signing-for-windows). Pushing to a branch named `build/<anything>`, or running the workflow by hand, builds everything without publishing and keeps the installers as files of that run.
 
 **By hand:** set `GH_TOKEN` to a GitHub token with **Contents: read and write** on this repository, then run `npm run release`.
 

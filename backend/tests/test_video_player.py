@@ -1,6 +1,5 @@
 """The built-in video player's backend: chapters, subtitles, streaming and where a video was left off."""
 
-import os
 import subprocess
 
 import pytest

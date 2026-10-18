@@ -17,9 +17,9 @@ from core import ytdlp_updates
 # Before anything imports yt_dlp: use a newer yt-dlp from the data folder if there is one.
 ytdlp_updates.activate(settings.data_dir)
 
-from core.db import get_store
-from core.websocket_manager import manager as ws_manager
-from routers import jobs, library, system
+from core.db import get_store  # noqa: E402 - after activating the newer yt-dlp
+from core.websocket_manager import manager as ws_manager  # noqa: E402
+from routers import jobs, library, system  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s")
 TOKEN_HEADER = "x-cadence-token"

@@ -6,7 +6,8 @@ import sqlite3
 import threading
 import time
 import uuid
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 
 from config import settings
 

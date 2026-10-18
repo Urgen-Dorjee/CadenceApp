@@ -10,7 +10,8 @@ import hashlib
 import json
 import os
 import subprocess
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from core.ffmpeg_utils import get_ffmpeg_path, get_ffprobe_path
 
