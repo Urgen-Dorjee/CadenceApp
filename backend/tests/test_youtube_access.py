@@ -58,6 +58,7 @@ def test_settings_validation(client, tmp_path, patch, ok):
     ("Could not copy Chrome cookie database. See https://github.com/yt-dlp/...", "Close the browser"),
     ("Failed to decrypt with DPAPI", "Close the browser"),
     ("ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.", "This playlist doesn't exist or is private."),
+    ("ERROR: [youtube] abc: Unable to download webpage: HTTP Error 429: Too Many Requests", "limiting downloads"),
 ])
 def test_friendly_sign_in_errors(message, expected):
     assert expected in pipeline.friendly_error(Exception(message))
@@ -65,3 +66,26 @@ def test_friendly_sign_in_errors(message, expected):
 
 def test_other_errors_lose_yt_dlps_prefix():
     assert pipeline.friendly_error(Exception("ERROR: [youtube] abc-DEF_123: Unable to extract player response")) ==         "Unable to extract player response"
+
+
+def test_retries_wait_longer_each_time():
+    from services import youtube
+
+    assert [youtube.retry_wait(n=n) for n in range(7)] == [1, 2, 4, 8, 16, 30, 30]   # as yt-dlp calls it
+    opts = youtube._base_opts()
+    assert set(opts["retry_sleep_functions"]) == {"http", "fragment", "extractor"}
+    assert opts["extractor_retries"] == 3
+
+
+def test_yt_dlp_waits_with_our_retry_function(monkeypatch):
+    """Through yt-dlp's own retry reporting, so a change in how it calls the function is caught."""
+    from yt_dlp.utils import RetryManager
+
+    from services import youtube
+
+    waits = []
+    monkeypatch.setattr("time.sleep", waits.append)
+    for count in (1, 2, 3):
+        RetryManager.report_retry(Exception("HTTP Error 429"), count, 3, sleep_func=youtube.retry_wait,
+                                  info=lambda msg: None, warn=lambda msg: None)
+    assert waits == [1, 2, 4]
