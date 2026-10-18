@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: UrgenDorjee.Cadence
+PackageVersion: 2.20.1
+PackageLocale: en-US
+Publisher: Urgen Dorjee
+PublisherUrl: https://wanderingwhispers.com
+PublisherSupportUrl: https://github.com/Urgen-Dorjee/CadenceApp/issues
+Author: Urgen Dorjee
+PackageName: Cadence
+PackageUrl: https://urgen-dorjee.github.io/CadenceApp/
+License: MIT
+LicenseUrl: https://github.com/Urgen-Dorjee/CadenceApp/blob/master/LICENSE
+Copyright: Copyright (c) 2026 Urgen Dorjee
+ShortDescription: Split YouTube jukeboxes into tagged songs, and save whole videos, playlists and courses.
+Description: |-
+  Cadence is a free, open-source YouTube downloader for music and video. Paste a jukebox, movie album or singer
+  collection and it finds where every song starts, cuts in the gap between songs, then tags and files each one
+  with its cover art. It also saves whole videos, playlists and courses with subtitles and chapters, and has a
+  music library and a video player. It can split audio and video files from your computer too.
+Moniker: cadence
+Tags:
+  - youtube-downloader
+  - music
+  - mp3
+  - video-downloader
+  - yt-dlp
+  - music-splitter
+  - playlist
+ReleaseNotesUrl: https://github.com/Urgen-Dorjee/CadenceApp/releases/tag/v2.20.1
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
