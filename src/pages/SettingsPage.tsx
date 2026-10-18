@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { Check, FolderOpen, Loader2, RefreshCw, Trash2, Monitor, Moon, Sun, FolderInput, MessageSquareMore } from 'lucide-react'
+import { Check, ClipboardCopy, DatabaseBackup, FolderOpen, Loader2, RefreshCw, Trash2, Monitor, Moon, Sun, FolderInput, MessageSquareMore } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { useAppStore } from '../stores/appStore'
@@ -121,7 +121,43 @@ export default function SettingsPage() {
   const [libraryText, setLibraryText] = useState('')
   const [custom, setCustom] = useState<Partial<Record<CollectionType, boolean>>>({})
   const [savedAt, setSavedAt] = useState(0)
-  const [busy, setBusy] = useState<'clear' | 'ytdlp' | null>(null)
+  const [busy, setBusy] = useState<'clear' | 'ytdlp' | 'diagnostics' | 'backup' | null>(null)
+  const [backups, setBackups] = useState<{ folder: string; newest: number; count: number } | null>(null)
+  useEffect(() => {
+    api.backups().then((b) => setBackups({ folder: b.folder, newest: b.backups[0]?.created ?? 0, count: b.backups.length })).catch(() => undefined)
+  }, [])
+
+  /** A report for bug reports, copied to the clipboard: versions, tools, settings without keys, the log's end. */
+  const copyDiagnostics = async () => {
+    setBusy('diagnostics')
+    try {
+      const { text } = await api.diagnostics()
+      const window_ = `## Window
+app ${await window.electronAPI?.getVersion()} · ${window.electronAPI?.platform} · ${screen.width}×${screen.height} at ${devicePixelRatio}×`
+      await navigator.clipboard.writeText(`${window_}
+
+${text}`)
+      toast.success('Copied. Paste it into your bug report. Your home folder and keys are left out.')
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const backupNow = async () => {
+    setBusy('backup')
+    try {
+      await api.backupNow()
+      const b = await api.backups()
+      setBackups({ folder: b.folder, newest: b.backups[0]?.created ?? 0, count: b.backups.length })
+      toast.success('Backed up your history and settings.')
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
   const [version, setVersion] = useState('')
 
   useEffect(() => {
@@ -754,10 +790,34 @@ export default function SettingsPage() {
               )}
             </div>
           </Row>
-          <Row title="Troubleshooting" hint="Log files record what Cadence did. Include them if you report a problem.">
-            <button className="btn-ghost" onClick={() => window.electronAPI?.openLogs()}>
-              <FolderOpen size={14} aria-hidden="true" /> Open logs
-            </button>
+          <Row
+            title="Backups"
+            hint={`Your splits, saved-song records, video progress and settings are copied once a day; the newest ${7} copies are kept.${
+              backups?.newest ? ` Last copy: ${new Date(backups.newest * 1000).toLocaleString()}.` : ''
+            } To restore one, quit Cadence and copy it over cadence.db in the data folder.`}
+          >
+            <div className="flex items-center gap-2">
+              <button className="btn-secondary" onClick={backupNow} disabled={busy === 'backup'}>
+                {busy === 'backup' ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <DatabaseBackup size={14} aria-hidden="true" />}
+                Back up now
+              </button>
+              {backups && (
+                <button className="btn-ghost" onClick={() => window.electronAPI?.openPath(backups.folder)}>
+                  <FolderOpen size={14} aria-hidden="true" /> Open backups
+                </button>
+              )}
+            </div>
+          </Row>
+          <Row title="Troubleshooting" hint="Reporting a problem? Copy diagnostics and paste them into the report: versions, settings and the end of the log, without your home folder or keys.">
+            <div className="flex items-center gap-2">
+              <button className="btn-secondary" onClick={copyDiagnostics} disabled={busy === 'diagnostics'}>
+                {busy === 'diagnostics' ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ClipboardCopy size={14} aria-hidden="true" />}
+                Copy diagnostics
+              </button>
+              <button className="btn-ghost" onClick={() => window.electronAPI?.openLogs()}>
+                <FolderOpen size={14} aria-hidden="true" /> Open logs
+              </button>
+            </div>
           </Row>
         </Section>
       </div>

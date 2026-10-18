@@ -1,6 +1,7 @@
 """SQLite-backed job store. Jobs survive app restarts so long splits can resume."""
 
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -85,6 +86,8 @@ CREATE TABLE IF NOT EXISTS video_progress (
 );
 """
 
+log = logging.getLogger(__name__)
+
 _JSON_FIELDS = ("collection", "sources", "tracks", "outputs", "options")
 
 # Columns added after the first release, with their definitions.
@@ -104,17 +107,47 @@ _ADDED_COLUMNS = {
 
 class JobStore:
     def __init__(self, path: str):
+        self._path = path
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.executescript(_SCHEMA)
         self._migrate()
-        self._backfill_saved_songs()
-        self._conn.commit()
+
+    # Upgrades of the database layout, in order. The database records how many have run
+    # (PRAGMA user_version), so each runs once. Add new steps at the end; never change old ones.
+    def _migrations(self) -> list:
+        return [self._add_columns, self._backfill_saved_songs]
+
+    @property
+    def schema_version(self) -> int:
+        return self._conn.execute("PRAGMA user_version").fetchone()[0]
 
     def _migrate(self) -> None:
-        """Add columns introduced after the first release to existing databases."""
+        steps = self._migrations()
+        version = self.schema_version
+        if version > len(steps):
+            log.warning("cadence.db was made by a newer Cadence (layout %s, this one knows %s)", version, len(steps))
+        had_data = bool(self._conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone())
+        if had_data and version < len(steps):
+            # Before changing anything, keep a copy of the database as it was.
+            from core.backup import backups_dir, copy_database
+
+            stamp = time.strftime("%Y-%m-%d_%H%M%S")
+            folder = backups_dir(os.path.dirname(os.path.abspath(self._path)))
+            try:
+                copy_database(self._conn, os.path.join(folder, f"cadence-{stamp}-before-layout-{len(steps)}.db"))
+            except (OSError, sqlite3.Error) as e:
+                log.warning("Couldn't back up the database before upgrading it: %s", e)
+        self._conn.executescript(_SCHEMA)
+        for number in range(version, len(steps)):
+            steps[number]()
+            self._conn.execute(f"PRAGMA user_version = {number + 1}")
+            self._conn.commit()
+        self._conn.commit()
+
+    def _add_columns(self) -> None:
+        """Columns added after the first release (idempotent: older databases may have some)."""
         existing = {row["name"] for row in self._conn.execute("PRAGMA table_info(jobs)")}
         for column, ddl in _ADDED_COLUMNS.items():
             if column not in existing:
