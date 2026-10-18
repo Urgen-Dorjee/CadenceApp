@@ -104,17 +104,39 @@ export async function api<T = unknown>(page: Page, method: string, path: string,
   }, { method, path, body }) as Promise<T>
 }
 
+const within = <T>(promise: Promise<T>, ms: number) =>
+  Promise.race([promise.then(() => true), new Promise<boolean>((done) => setTimeout(() => done(false), ms))])
+
+/** Electron's helper processes (zygote, GPU, crash reporter) still running from this checkout. */
+function electronLeftovers(): string[] {
+  if (isWindows) return []
+  try {
+    return execSync('ps -eo pid,cmd', { encoding: 'utf8' }).split('\n').filter((l) => l.includes(join(ROOT, 'node_modules', 'electron')))
+  } catch {
+    return []
+  }
+}
+
 /**
- * Quit the app as a user would. If it hasn't exited within 15 s, show why (the end of its log
- * and the processes still running), stop it and its backend, and fail: Cadence must quit cleanly.
+ * Quit the app as a user would and check its process exits within 15 s; otherwise show why
+ * (the end of its log and the processes still running), stop it, and fail.
+ *
+ * On Linux, Electron's helper processes can keep the output pipes Playwright watches open after
+ * the app itself has exited, so app.close() may never finish: what's checked is the exit.
  */
 export async function quit(run: Launched): Promise<void> {
-  const pid = run.app.process().pid
-  const exited = await Promise.race([
-    run.app.close().then(() => true),
-    new Promise<boolean>((done) => setTimeout(() => done(false), 15_000)),
-  ])
-  if (exited) return
+  const child = run.app.process()
+  const pid = child.pid
+  const exitedEvent = new Promise<void>((done) => (child.exitCode !== null ? done() : child.once('exit', () => done())))
+  run.app.evaluate(({ app }) => app.quit()).catch(() => undefined)  // the call ends when the app does
+  const exited = await within(exitedEvent, 15_000)
+  if (exited) {
+    if (!(await within(run.app.close(), 10_000))) {
+      const leftovers = electronLeftovers()
+      if (leftovers.length) execSync(`kill -KILL ${leftovers.map((l) => l.trim().split(/\s+/)[0]).join(' ')}`)
+    }
+    return
+  }
   const log = join(run.dataDir, 'logs', 'main.log')
   const lines = existsSync(log) ? readFileSync(log, 'utf8').split('\n').slice(-60) : ['(none)']
   console.error(['--- main.log (end) ---', ...lines].join('\n'))
