@@ -9,9 +9,7 @@ export interface UpdateStatus {
 interface ElectronAPI {
   platform: 'win32' | 'darwin' | 'linux' | string
   getBackendInfo: () => Promise<{ port: number; token: string; ready?: boolean }>
-  youtubeSignIn: () => Promise<{ result: 'signed-in' | 'cancelled'; file: string }>
-  youtubeSignOut: () => Promise<void>
-  youtubeCookiesFile: () => Promise<string>
+
   selectFolder: (options?: { defaultPath?: string; title?: string }) => Promise<string | null>
   selectMediaFiles: () => Promise<string[]>
   selectImage: () => Promise<string | null>

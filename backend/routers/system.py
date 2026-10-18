@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from config import AUDIO_FORMATS, Preferences, load_preferences, save_preferences, settings
 from core.db import ACTIVE_STATES, get_store
 from core.websocket_manager import manager as ws
-from services import identify, pipeline, video
+from services import identify, pipeline, video, youtube_cookies
 from core.ffmpeg_utils import is_ffmpeg_available
 from core import ytdlp_updates
 
@@ -67,8 +67,8 @@ async def update_preferences(prefs: Preferences):
         raise HTTPException(status_code=422, detail="Snap window must be between 0 and 10 seconds")
     if prefs.cookies_from not in ("", "firefox", "chrome", "edge", "brave", "file"):
         raise HTTPException(status_code=422, detail="Choose Firefox, Chrome, Edge, Brave or a cookies.txt file")
-    if prefs.cookies_from == "file" and not os.path.isfile(prefs.cookies_file):
-        raise HTTPException(status_code=422, detail="Choose your cookies.txt file")
+    if prefs.cookies_from == "file" and (problem := youtube_cookies.problem_with_cookies_file(prefs.cookies_file)):
+        raise HTTPException(status_code=422, detail=problem)
     if prefs.proxy and not re.match(r"^(https?|socks5h?|socks4a?)://\S+$", prefs.proxy.strip()):
         raise HTTPException(status_code=422, detail="Proxy must look like http://host:port or socks5://host:port")
     if prefs.lyrics not in ("off", "embed", "lrc"):
@@ -200,3 +200,9 @@ async def backup_now():
 
     path = await asyncio.to_thread(backup.backup_now, settings.db_path, settings.prefs_path, settings.data_dir, "manual")
     return {"name": os.path.basename(path)}
+
+
+@router.get("/youtube/sign-in")
+async def youtube_sign_in():
+    """What's available for signing in to YouTube: is Firefox here (its sign-in can be read)?"""
+    return {"firefox": await asyncio.to_thread(youtube_cookies.firefox_installed)}

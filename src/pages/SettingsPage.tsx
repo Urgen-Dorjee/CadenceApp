@@ -126,11 +126,11 @@ export default function SettingsPage() {
   const [libraryText, setLibraryText] = useState('')
   const [custom, setCustom] = useState<Partial<Record<CollectionType, boolean>>>({})
   const [savedAt, setSavedAt] = useState(0)
-  const [busy, setBusy] = useState<'clear' | 'ytdlp' | 'diagnostics' | 'backup' | 'signin' | null>(null)
-  // Where Cadence keeps its own YouTube sign-in (cookies for yt-dlp), to tell it from a user's file.
-  const [ownCookies, setOwnCookies] = useState('')
+  const [busy, setBusy] = useState<'clear' | 'ytdlp' | 'diagnostics' | 'backup' | null>(null)
+  // Whether Firefox is installed: its YouTube sign-in is the one Cadence can read directly.
+  const [firefox, setFirefox] = useState(false)
   useEffect(() => {
-    window.electronAPI?.youtubeCookiesFile?.().then(setOwnCookies).catch(() => undefined)
+    api.youtubeSignIn().then((s) => setFirefox(s.firefox)).catch(() => undefined)
   }, [])
   const [backups, setBackups] = useState<{ folder: string; newest: number; count: number } | null>(null)
   useEffect(() => {
@@ -243,28 +243,10 @@ ${text}`)
     }
   }
 
-  const signedInHere = Boolean(ownCookies) && prefs?.cookies_from === 'file' && prefs.cookies_file === ownCookies
-
-  /** Sign in to YouTube in a window of Cadence's own; downloads then use that sign-in. */
-  const signInToYouTube = async () => {
-    setBusy('signin')
-    try {
-      const { result, file } = await window.electronAPI!.youtubeSignIn()
-      if (result === 'signed-in') {
-        await save({ cookies_from: 'file', cookies_file: file })
-        toast.success('Signed in. Downloads now use your YouTube account.')
-      }
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const signOutOfYouTube = async () => {
-    await window.electronAPI?.youtubeSignOut()
-    await save({ cookies_from: '', cookies_file: '' })
-    toast('Signed out of YouTube in Cadence.')
+  /** Use a cookies.txt exported from a signed-in browser (checked by the backend when saved). */
+  const chooseCookiesFile = async () => {
+    const file = await window.electronAPI?.selectCookiesFile()
+    if (file) await save({ cookies_from: 'file', cookies_file: file })
   }
 
   const chooseFolder = async () => {
@@ -782,65 +764,60 @@ ${text}`)
 
         <Section id="youtube" title="YouTube" description="For videos that need you signed in, or networks where YouTube is blocked.">
           <Row
-            title="Sign in to YouTube"
-            hint={signedInHere
-              ? 'Downloads use your YouTube account, so age-restricted videos and the “confirm you’re not a bot” check work. The sign-in stays on this computer, in Cadence’s data folder.'
-              : 'Age-restricted videos, and YouTube’s “confirm you’re not a bot” check, need you signed in. Sign in once in a Cadence window (it never touches your browser). If Google says the browser isn’t secure, use Firefox below instead.'}
-          >
-            {signedInHere ? (
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[13px] text-ok"><Check size={14} aria-hidden="true" /> Signed in</span>
-                <button className="btn-ghost" onClick={signOutOfYouTube}>Sign out</button>
-              </div>
-            ) : (
-              <button className="btn-secondary" onClick={signInToYouTube} disabled={busy === 'signin' || !window.electronAPI?.youtubeSignIn}>
-                {busy === 'signin' ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-                {busy === 'signin' ? 'Waiting for you to sign in…' : 'Sign in to YouTube'}
-              </button>
-            )}
-          </Row>
-          <Row
-            title="Or use a browser's sign-in"
-            hint="Cadence can read the YouTube sign-in of a browser instead; nothing is sent anywhere else. Firefox works best. On Windows, Chrome, Edge and Brave now lock their cookies so other apps can't read them: use Sign in to YouTube above, Firefox, or a cookies.txt file."
+            title="YouTube sign-in"
+            hint="Only needed when YouTube asks: age-restricted videos, or downloads failing with “confirm you’re not a bot”. Cadence uses the sign-in of a browser you're already signed in to; your password is never involved, and it's only sent to YouTube."
             htmlFor="cookies-from"
             stack
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                id="cookies-from"
-                className="field w-56"
-                value={signedInHere ? '' : prefs.cookies_from}
-                disabled={signedInHere}
-                onChange={async (e) => {
-                  const value = e.target.value as Preferences['cookies_from']
-                  if (value === 'file' && !prefs.cookies_file) {
-                    const file = await window.electronAPI?.selectCookiesFile()
-                    if (file) save({ cookies_from: 'file', cookies_file: file })
-                    return
-                  }
-                  save({ cookies_from: value })
-                }}
-              >
-                <option value="">Don't sign in</option>
-                <option value="firefox">Firefox</option>
-                <option value="chrome">Chrome</option>
-                <option value="edge">Microsoft Edge</option>
-                <option value="brave">Brave</option>
-                <option value="file">A cookies.txt file…</option>
-              </select>
-              {prefs.cookies_from === 'file' && !signedInHere && (
-                <>
-                  <span className="text-[12px] font-mono text-muted truncate max-w-xs" title={prefs.cookies_file}>{prefs.cookies_file}</span>
-                  <button
-                    className="btn-ghost h-8"
-                    onClick={async () => {
-                      const file = await window.electronAPI?.selectCookiesFile()
-                      if (file) save({ cookies_file: file })
-                    }}
-                  >
-                    Change file…
-                  </button>
-                </>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  id="cookies-from"
+                  className="field w-64"
+                  value={prefs.cookies_from}
+                  onChange={async (e) => {
+                    const value = e.target.value as Preferences['cookies_from']
+                    if (value === 'file') return chooseCookiesFile()
+                    save({ cookies_from: value })
+                  }}
+                >
+                  <option value="">Don't sign in</option>
+                  <option value="firefox">Firefox{firefox ? '' : ' (not found on this computer)'}</option>
+                  <option value="file">A cookies.txt file…</option>
+                  <option value="chrome">Chrome (locked on Windows)</option>
+                  <option value="edge">Microsoft Edge (locked on Windows)</option>
+                  <option value="brave">Brave (locked on Windows)</option>
+                </select>
+                {prefs.cookies_from === 'file' && (
+                  <>
+                    <span className="text-[12px] font-mono text-muted truncate max-w-xs" title={prefs.cookies_file}>{prefs.cookies_file}</span>
+                    <button className="btn-ghost h-8" onClick={chooseCookiesFile}>Choose a newer file…</button>
+                  </>
+                )}
+              </div>
+              {prefs.cookies_from !== 'firefox' && (
+                <div className="rounded-md border border-line bg-sunken/40 px-3 py-2.5 text-[12.5px] text-muted flex flex-col gap-2">
+                  {firefox && (
+                    <p>
+                      <span className="text-ink font-medium">Easiest: Firefox.</span> Sign in to YouTube in Firefox once, then choose Firefox above.
+                    </p>
+                  )}
+                  <div>
+                    <p className="text-ink font-medium">Using Chrome, Edge or Brave?</p>
+                    <p>On Windows they lock their sign-in so other apps can't read it, so export it once:</p>
+                    <ol className="list-decimal pl-5 mt-1 flex flex-col gap-0.5">
+                      <li>
+                        Add the free extension <span className="text-ink">Get cookies.txt LOCALLY</span> to your browser (it saves only to your
+                        computer).
+                      </li>
+                      <li>Open youtube.com, where you're signed in, click the extension and choose <span className="text-ink">Export</span>.</li>
+                      <li>
+                        Choose <button className="text-accent hover:underline" onClick={chooseCookiesFile}>A cookies.txt file…</button> here and pick the
+                        file it saved. Keep that file private: it signs in as you.
+                      </li>
+                    </ol>
+                  </div>
+                </div>
               )}
             </div>
           </Row>
